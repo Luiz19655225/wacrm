@@ -41,9 +41,11 @@ export const metadata: Metadata = {
   // Indexable by default: the public marketing site lives at "/".
   // (auth) and (dashboard) route groups declare their own `noindex`
   // metadata, which Next merges over this for those subtrees.
-  icons: {
-    icon: [{ url: "/icon" }],
-  },
+  //
+  // No manual `icons` entry here — favicon.ico, icon.tsx, apple-icon.tsx
+  // and manifest.ts are all file-convention routes Next.js auto-detects
+  // and injects the right <link> tags for. Listing them here too would
+  // just duplicate (or conflict with) what the conventions already emit.
   formatDetection: {
     email: false,
     address: false,
