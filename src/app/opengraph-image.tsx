@@ -7,12 +7,21 @@ import { ImageResponse } from "next/og";
 // @font-face loading without fetching font bytes ourselves) — so it
 // intentionally uses the platform default sans rather than pulling
 // in Inter Tight.
+//
+// Composition mirrors the approved primary lockup (symbol above
+// wordmark above tagline) rather than the boxed glyph used for
+// favicon/apple-icon — an OG card has room to show the real mark.
 
 export const runtime = "edge";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function OpengraphImage() {
+export default async function OpengraphImage() {
+  const symbolData = await fetch(
+    new URL("./brand-assets/wavon-symbol.png", import.meta.url),
+  ).then((res) => res.arrayBuffer());
+  const symbolSrc = `data:image/png;base64,${Buffer.from(symbolData).toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -23,36 +32,14 @@ export default function OpengraphImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 28,
+          gap: 20,
           background: "#0e0e16",
           backgroundImage:
             "radial-gradient(circle at 25% 20%, rgba(47,95,255,0.35), transparent 55%), radial-gradient(circle at 80% 75%, rgba(139,92,246,0.35), transparent 55%)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 96,
-            height: 96,
-            borderRadius: 22,
-            background: "linear-gradient(135deg, #2f5fff 0%, #8b5cf6 100%)",
-          }}
-        >
-          <svg
-            width="52"
-            height="52"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#ffffff"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 7 L7.5 17 L12 9 L16.5 17 L21 7" />
-          </svg>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={symbolSrc} width={176} height={120} alt="" />
         <div
           style={{
             fontSize: 80,

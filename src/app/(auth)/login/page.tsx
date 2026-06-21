@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { WavonMark } from "@/components/brand/wavon-mark";
+import { WavonLogoPrimary } from "@/components/brand/wavon-logo";
 import { UsersRound } from "lucide-react";
 
 // `useSearchParams` opts the component out of static prerendering
@@ -69,11 +69,8 @@ function LoginPageInner() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4">
-      <Link href="/" className="flex items-center gap-2.5">
-        <WavonMark className="h-9 w-9" />
-        <span className="font-heading text-lg font-semibold tracking-tight text-foreground">
-          WAVON
-        </span>
+      <Link href="/">
+        <WavonLogoPrimary />
       </Link>
 
       <Card className="w-full max-w-md border-border bg-card">
