@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { GitBranch, MessageSquare, Radio, Zap } from "lucide-react";
+import { CalendarClock, ListChecks, MessageSquare, UsersRound } from "lucide-react";
 
 const previewItems = [
-  { icon: MessageSquare, label: "Inbox compartilhada" },
-  { icon: GitBranch, label: "Pipelines de vendas" },
-  { icon: Radio, label: "Disparos em massa" },
-  { icon: Zap, label: "Automações" },
+  { icon: MessageSquare, label: "IA no 1º atendimento" },
+  { icon: ListChecks, label: "Qualificação automática" },
+  { icon: UsersRound, label: "Humano das 9h às 18h" },
+  { icon: CalendarClock, label: "Agendamento fora do horário" },
 ];
 
 export function Hero() {
@@ -26,24 +26,27 @@ export function Hero() {
 
       <div className="mx-auto flex max-w-4xl flex-col items-center px-4 py-24 text-center sm:px-6 sm:py-32">
         <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
-          WhatsApp Business API oficial
+          IA no primeiro atendimento · WhatsApp Business API oficial
         </span>
 
         <h1 className="font-heading mt-6 text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
-          Todo o seu WhatsApp,{" "}
+          Lead atendido na hora,{" "}
           <span className="bg-gradient-to-r from-[#2f5fff] to-[#8b5cf6] bg-clip-text text-transparent">
-            em uma única tela
+            negócio fechado pelo seu time
           </span>
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
-          A WAVON reúne inbox compartilhada, contatos, pipelines de vendas e
-          automações em um CRM feito para equipes que vivem no WhatsApp.
+          A WAVON pré-atende todo lead com IA — de anúncios, site ou WhatsApp
+          — e qualifica antes de qualquer humano entrar. No horário comercial
+          (9h às 18h) a conversa é transferida para o seu time; fora dele, a
+          IA orienta o cliente e agenda o retorno. Tudo registrado num CRM
+          com histórico, contatos, negociações e follow-up automático.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="/signup"
+            href="/login"
             className={buttonVariants({
               variant: "default",
               size: "lg",
@@ -52,16 +55,16 @@ export function Hero() {
           >
             Começar agora
           </Link>
-          <Link
-            href="/login"
+          <a
+            href="#demo"
             className={buttonVariants({
               variant: "outline",
               size: "lg",
               className: "px-6",
             })}
           >
-            Entrar
-          </Link>
+            Solicitar demonstração
+          </a>
         </div>
 
         <div className="mt-16 grid w-full grid-cols-2 gap-3 sm:grid-cols-4">

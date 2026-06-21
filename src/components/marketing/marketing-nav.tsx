@@ -29,12 +29,12 @@ export function MarketingNav() {
           >
             Entrar
           </Link>
-          <Link
-            href="/signup"
+          <a
+            href="#demo"
             className={buttonVariants({ variant: "default", className: "px-4" })}
           >
-            Criar conta
-          </Link>
+            Solicitar demonstração
+          </a>
         </div>
       </div>
     </header>
