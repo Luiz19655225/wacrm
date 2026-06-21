@@ -1,8 +1,8 @@
 {
-  "name": "wacrm",
+  "name": "wavon",
   "version": "0.2.2",
   "private": true,
-  "description": "Self-hostable CRM template for WhatsApp built on Next.js and Supabase — shared inbox, contacts, sales pipelines, broadcasts, and no-code automations.",
+  "description": "WAVON — CRM omnichannel para WhatsApp, construído com Next.js e Supabase. Inbox compartilhada, contatos, pipelines de vendas, disparos e automações sem código.",
   "license": "MIT",
   "author": "Arnas Donauskas",
   "homepage": "https://github.com/ArnasDon/wacrm",

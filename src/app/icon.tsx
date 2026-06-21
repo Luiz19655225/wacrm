@@ -1,9 +1,13 @@
 import { ImageResponse } from "next/og";
 
-// Replaces the default Next.js favicon with the brand mark — Hostinger
-// violet rounded square + white chat-square glyph — matching the
-// sidebar logo in `src/components/layout/sidebar.tsx`. Next.js renders
-// this at build time and auto-injects <link rel="icon"> into <head>.
+// Replaces the default Next.js favicon with the WAVON brand mark — a
+// blue-to-violet gradient rounded square with a white wave-"W" glyph,
+// matching `src/components/brand/wavon-mark.tsx` (sidebar/login/
+// marketing nav). Kept self-contained (no shared component import)
+// because this renders through Satori at build time, which only
+// supports a subset of CSS/SVG — duplicating the small markup here
+// avoids coupling the edge-rendered icon to a component meant for
+// normal DOM rendering. Next.js auto-injects <link rel="icon">.
 //
 // This route takes precedence over src/app/favicon.ico, which is the
 // Next.js default and can stay on disk harmlessly (or be removed).
@@ -22,21 +26,21 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#7c3aed", // primary (Hostinger-aligned purple)
-          borderRadius: 6,
+          background: "linear-gradient(135deg, #2f5fff 0%, #8b5cf6 100%)",
+          borderRadius: 7,
         }}
       >
         <svg
-          width="20"
-          height="20"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="#ffffff"
-          strokeWidth="2.5"
+          strokeWidth="2.6"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <path d="M3 7 L7.5 17 L12 9 L16.5 17 L21 7" />
         </svg>
       </div>
     ),

@@ -14,6 +14,7 @@
  */
 
 export const THEME_IDS = [
+  "wavon",
   "violet",
   "emerald",
   "cobalt",
@@ -23,9 +24,16 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "wavon";
 
-export const STORAGE_KEY = "wacrm.theme";
+export const STORAGE_KEY = "wavon.theme";
+
+/**
+ * Pre-rebrand keys. Read once by the boot script in `layout.tsx` to
+ * silently migrate a returning visitor's saved preference to the new
+ * key — never written to again after that.
+ */
+export const LEGACY_STORAGE_KEY = "wacrm.theme";
 
 /**
  * MODE — the light/dark dimension, orthogonal to the accent theme.
@@ -45,7 +53,10 @@ export type Mode = (typeof MODES)[number];
 
 export const DEFAULT_MODE: Mode = "dark";
 
-export const MODE_STORAGE_KEY = "wacrm.mode";
+export const MODE_STORAGE_KEY = "wavon.mode";
+
+/** Same migration story as `LEGACY_STORAGE_KEY`, for the mode axis. */
+export const LEGACY_MODE_STORAGE_KEY = "wacrm.mode";
 
 export function isMode(value: unknown): value is Mode {
   return (
@@ -67,6 +78,12 @@ export interface ThemeMeta {
 }
 
 export const THEMES: ReadonlyArray<ThemeMeta> = [
+  {
+    id: "wavon",
+    name: "Wavon",
+    tagline: "The brand default — premium indigo, blue-to-violet.",
+    swatch: "oklch(0.58 0.23 280)",
+  },
   {
     id: "violet",
     name: "Violet",

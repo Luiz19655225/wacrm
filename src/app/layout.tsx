@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Inter_Tight } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
@@ -7,6 +7,8 @@ import { ThemedToaster } from "@/components/themed-toaster";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
+  LEGACY_MODE_STORAGE_KEY,
+  LEGACY_STORAGE_KEY,
   MODE_STORAGE_KEY,
   MODES,
   STORAGE_KEY,
@@ -18,16 +20,27 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+// Headline font for marketing/brand surfaces (landing hero, sidebar +
+// login wordmark). Kept separate from --font-sans (the dashboard UI
+// font) via its own CSS variable, wired to the `font-heading` utility
+// in globals.css — everyday UI text is untouched.
+const interTight = Inter_Tight({
+  variable: "--font-heading-sans",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
+  // Resolves relative OG/Twitter image URLs (e.g. /opengraph-image) to
+  // the production domain instead of localhost.
+  metadataBase: new URL("https://wavon.com.br"),
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "WAVON",
+    template: "%s — WAVON",
   },
-  description: "Self-hostable CRM template for WhatsApp.",
-  robots: {
-    index: false,
-    follow: false,
-  },
+  description: "WAVON — CRM omnichannel para WhatsApp.",
+  // Indexable by default: the public marketing site lives at "/".
+  // (auth) and (dashboard) route groups declare their own `noindex`
+  // metadata, which Next merges over this for those subtrees.
   icons: {
     icon: [{ url: "/icon" }],
   },
@@ -39,7 +52,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
+  themeColor: "#0e0e16",
   colorScheme: "dark light",
 };
 
@@ -58,15 +71,36 @@ const THEME_BOOT_SCRIPT = `
   var d = document.documentElement;
   try {
     var THEME_KEY = ${JSON.stringify(STORAGE_KEY)};
+    var LEGACY_THEME_KEY = ${JSON.stringify(LEGACY_STORAGE_KEY)};
     var THEME_DEFAULT = ${JSON.stringify(DEFAULT_THEME)};
     var THEMES = ${JSON.stringify(THEME_IDS)};
     var savedTheme = localStorage.getItem(THEME_KEY);
+    if (savedTheme === null) {
+      // One-time silent migration from the pre-rebrand key — a
+      // returning visitor keeps their chosen accent instead of
+      // snapping back to the new default.
+      var legacyTheme = localStorage.getItem(LEGACY_THEME_KEY);
+      if (legacyTheme !== null) {
+        savedTheme = legacyTheme;
+        localStorage.setItem(THEME_KEY, legacyTheme);
+        localStorage.removeItem(LEGACY_THEME_KEY);
+      }
+    }
     d.dataset.theme = THEMES.indexOf(savedTheme) !== -1 ? savedTheme : THEME_DEFAULT;
 
     var MODE_KEY = ${JSON.stringify(MODE_STORAGE_KEY)};
+    var LEGACY_MODE_KEY = ${JSON.stringify(LEGACY_MODE_STORAGE_KEY)};
     var MODE_DEFAULT = ${JSON.stringify(DEFAULT_MODE)};
     var MODES = ${JSON.stringify(MODES)};
     var savedMode = localStorage.getItem(MODE_KEY);
+    if (savedMode === null) {
+      var legacyMode = localStorage.getItem(LEGACY_MODE_KEY);
+      if (legacyMode !== null) {
+        savedMode = legacyMode;
+        localStorage.setItem(MODE_KEY, legacyMode);
+        localStorage.removeItem(LEGACY_MODE_KEY);
+      }
+    }
     d.dataset.mode = MODES.indexOf(savedMode) !== -1 ? savedMode : MODE_DEFAULT;
   } catch (_e) {
     d.dataset.theme = ${JSON.stringify(DEFAULT_THEME)};
@@ -85,7 +119,7 @@ export default function RootLayout({
       lang="en"
       data-theme={DEFAULT_THEME}
       data-mode={DEFAULT_MODE}
-      className={`${inter.variable} h-full antialiased`}
+      className={`${inter.variable} ${interTight.variable} h-full antialiased`}
       // The `theme-boot` script below rewrites `data-theme` and
       // `data-mode` on <html> from localStorage before React hydrates,
       // so for any non-default choice the client DOM intentionally

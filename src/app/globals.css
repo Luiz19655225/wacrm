@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-heading-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -88,66 +88,84 @@
 
 :root,
 html[data-mode="dark"] {
-  --background: oklch(0.13 0.01 260);
+  --background: oklch(0.13 0.015 270);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.18 0.01 260);
-  --card-2: oklch(0.205 0.01 260);
+  --card: oklch(0.18 0.015 270);
+  --card-2: oklch(0.205 0.015 270);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.01 260);
+  --popover: oklch(0.18 0.015 270);
   --popover-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.01 260);
+  --secondary: oklch(0.22 0.015 270);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.22 0.01 260);
+  --muted: oklch(0.22 0.015 270);
+  --muted-foreground: oklch(0.65 0.01 270);
+  --accent: oklch(0.22 0.015 270);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.28 0.01 260);
+  --border: oklch(0.28 0.015 270);
+  --input: oklch(0.28 0.015 270);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.16 0.01 260);
+  --sidebar: oklch(0.16 0.015 270);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.01 260);
+  --sidebar-accent: oklch(0.22 0.015 270);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
+  --sidebar-border: oklch(0.28 0.015 270);
 }
 
 html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.21 0.01 260);
+  --background: oklch(0.99 0.003 270);
+  --foreground: oklch(0.21 0.015 270);
   --card: oklch(1 0 0);
-  --card-2: oklch(0.985 0.002 260);
-  --card-foreground: oklch(0.21 0.01 260);
+  --card-2: oklch(0.985 0.003 270);
+  --card-foreground: oklch(0.21 0.015 270);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
-  --secondary: oklch(0.967 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 260);
-  --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
-  --accent: oklch(0.96 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 260);
+  --popover-foreground: oklch(0.21 0.015 270);
+  --secondary: oklch(0.967 0.004 270);
+  --secondary-foreground: oklch(0.25 0.015 270);
+  --muted: oklch(0.967 0.004 270);
+  --muted-foreground: oklch(0.52 0.018 270);
+  --accent: oklch(0.96 0.005 270);
+  --accent-foreground: oklch(0.25 0.015 270);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 260);
-  --input: oklch(0.922 0.004 260);
-  --chart-2: oklch(0.6 0.1 260);
-  --chart-3: oklch(0.7 0.06 260);
-  --chart-4: oklch(0.8 0.04 260);
-  --chart-5: oklch(0.87 0.03 260);
+  --border: oklch(0.922 0.005 270);
+  --input: oklch(0.922 0.005 270);
+  --chart-2: oklch(0.6 0.1 270);
+  --chart-3: oklch(0.7 0.06 270);
+  --chart-4: oklch(0.8 0.04 270);
+  --chart-5: oklch(0.87 0.03 270);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-accent: oklch(0.96 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 260);
-  --sidebar-border: oklch(0.922 0.004 260);
+  --sidebar: oklch(0.985 0.003 270);
+  --sidebar-foreground: oklch(0.21 0.015 270);
+  --sidebar-accent: oklch(0.96 0.005 270);
+  --sidebar-accent-foreground: oklch(0.25 0.015 270);
+  --sidebar-border: oklch(0.922 0.005 270);
 }
 
 /* ---- ACCENT: primary color ---- */
 
+/* WAVON brand default — indigo, halfway between a royal blue and an
+ * electric violet (hue 280), so the gradient pairing below (chart-1
+ * blue → chart-2 violet) reads as one cohesive brand color rather
+ * than two competing accents. */
 :root,
+html[data-theme="wavon"] {
+  --primary: oklch(0.58 0.23 280);
+  --primary-foreground: oklch(0.985 0 0);
+  --primary-hover: oklch(0.65 0.21 280);
+  --primary-soft: oklch(0.58 0.23 280 / 0.12);
+  --primary-soft-2: oklch(0.58 0.23 280 / 0.2);
+  --ring: oklch(0.58 0.23 280);
+  --chart-1: oklch(0.55 0.22 258);
+  --chart-2: oklch(0.63 0.22 300);
+  --sidebar-primary: oklch(0.58 0.23 280);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.58 0.23 280);
+}
+
 html[data-theme="violet"] {
   --primary: oklch(0.526 0.247 293);
   --primary-foreground: oklch(0.985 0 0);
@@ -226,5 +244,15 @@ html[data-theme="rose"] {
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Brand mark background — the blue-to-violet gradient behind the
+   * WAVON wave glyph (sidebar, login, marketing nav). Fixed brand
+   * colors, not accent-theme-aware: the wordmark stays recognizable
+   * even if a user picks a different accent in Settings. */
+  .bg-wavon-gradient {
+    background-image: linear-gradient(135deg, #2f5fff 0%, #8b5cf6 100%);
   }
 }
