@@ -255,4 +255,40 @@ html[data-theme="rose"] {
   .bg-wavon-gradient {
     background-image: linear-gradient(135deg, #2f5fff 0%, #8b5cf6 100%);
   }
+
+  /* Hand-rolled prose styling for /docs content — authored as plain
+   * semantic HTML (h1-h3/p/ul/ol/strong/code) inside <DocsArticle>.
+   * No typography plugin: the project has no markdown/MDX pipeline,
+   * so docs pages are written as JSX, and this is the whole ruleset
+   * they need. */
+  .docs-prose h1 {
+    @apply font-heading mb-4 text-3xl font-bold tracking-tight text-foreground;
+  }
+  .docs-prose h2 {
+    @apply font-heading mt-10 mb-3 text-2xl font-semibold tracking-tight text-foreground;
+  }
+  .docs-prose h3 {
+    @apply font-heading mt-6 mb-2 text-lg font-semibold text-foreground;
+  }
+  .docs-prose p {
+    @apply mb-4 leading-relaxed text-muted-foreground;
+  }
+  .docs-prose ul {
+    @apply mb-4 list-outside list-disc space-y-1 pl-5 text-muted-foreground;
+  }
+  .docs-prose ol {
+    @apply mb-4 list-outside list-decimal space-y-1 pl-5 text-muted-foreground;
+  }
+  .docs-prose li {
+    @apply leading-relaxed;
+  }
+  .docs-prose strong {
+    @apply font-semibold text-foreground;
+  }
+  .docs-prose a {
+    @apply text-primary hover:underline;
+  }
+  .docs-prose code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-foreground;
+  }
 }
