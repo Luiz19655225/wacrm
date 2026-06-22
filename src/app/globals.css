@@ -256,6 +256,16 @@ html[data-theme="rose"] {
     background-image: linear-gradient(135deg, #2f5fff 0%, #8b5cf6 100%);
   }
 
+  /* Directional brand glow for the marketing hero's product mockup —
+   * same blue/violet pair as .bg-wavon-gradient, but as a soft drop
+   * shadow so the glow reads as light coming from behind the card
+   * instead of a flat background tint. */
+  .shadow-wavon-glow {
+    box-shadow:
+      0 30px 80px -20px rgb(47 95 255 / 0.35),
+      0 40px 100px -10px rgb(139 92 246 / 0.25);
+  }
+
   /* Hand-rolled prose styling for /docs content — authored as plain
    * semantic HTML (h1-h3/p/ul/ol/strong/code) inside <DocsArticle>.
    * No typography plugin: the project has no markdown/MDX pipeline,
