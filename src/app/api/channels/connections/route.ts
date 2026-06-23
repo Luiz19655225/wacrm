@@ -90,6 +90,36 @@ export async function POST(request: Request) {
 
     const provider = TYPE_PROVIDER_PAIRS[connectionType as ChannelConnectionType];
 
+    // Avoid piling up placeholder rows: if this account already has
+    // a 'pending' connection of this exact type, hand that one back
+    // instead of creating a duplicate (Phase 1 left this as a known
+    // non-blocking gap — see 028_account_connections.sql history).
+    //
+    // Ordered + limit(1) rather than `.maybeSingle()`: accounts that
+    // already accumulated duplicate pending rows before this guard
+    // existed would otherwise make `.maybeSingle()` itself error out
+    // ("multiple rows returned"), turning every future click into a
+    // 500 instead of gracefully converging on the oldest pending row.
+    const { data: existingPendingRows, error: existingError } = await ctx.supabase
+      .from("account_connections")
+      .select(CONNECTION_FIELDS)
+      .eq("account_id", ctx.accountId)
+      .eq("connection_type", connectionType)
+      .eq("connection_status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (existingError) {
+      console.error("[POST /api/channels/connections] existing-pending lookup error:", existingError);
+      return NextResponse.json(
+        { error: "Failed to check existing connections" },
+        { status: 500 },
+      );
+    }
+    if (existingPendingRows && existingPendingRows.length > 0) {
+      return NextResponse.json({ connection: existingPendingRows[0], reused: true });
+    }
+
     const { data, error } = await ctx.supabase
       .from("account_connections")
       .insert({

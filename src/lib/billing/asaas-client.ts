@@ -14,9 +14,11 @@
 
 import type {
   AsaasCustomer,
+  AsaasCustomerList,
   AsaasSubscription,
   CreateAsaasCustomerArgs,
   CreateAsaasSubscriptionArgs,
+  UpdateAsaasSubscriptionArgs,
 } from './types';
 
 const ASAAS_API_URL =
@@ -100,4 +102,37 @@ export async function getAsaasSubscription(
   subscriptionId: string,
 ): Promise<AsaasSubscription> {
   return asaasFetch<AsaasSubscription>(`/subscriptions/${subscriptionId}`);
+}
+
+/**
+ * Plan upgrade/downgrade on an already-created subscription. Only
+ * touches `value` — no proration, no `updatePendingPayments` flag, so
+ * a charge already generated for the current cycle is unaffected;
+ * the new value applies starting with the next charge Asaas
+ * generates from `nextDueDate`/`cycle`.
+ */
+export async function updateAsaasSubscription(
+  subscriptionId: string,
+  args: UpdateAsaasSubscriptionArgs,
+): Promise<AsaasSubscription> {
+  return asaasFetch<AsaasSubscription>(`/subscriptions/${subscriptionId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: args.value }),
+  });
+}
+
+/**
+ * Looks up a previously-created customer by our `externalReference`
+ * (the account id) before creating a new one. Guards against a
+ * duplicate Asaas customer if a prior plan-selection attempt created
+ * one but failed before persisting `asaas_customer_id` on our side.
+ * Returns null if none exists yet.
+ */
+export async function findAsaasCustomerByExternalReference(
+  externalReference: string,
+): Promise<AsaasCustomer | null> {
+  const result = await asaasFetch<AsaasCustomerList>(
+    `/customers?externalReference=${encodeURIComponent(externalReference)}`,
+  );
+  return result.data[0] ?? null;
 }

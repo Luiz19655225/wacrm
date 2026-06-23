@@ -52,6 +52,22 @@ export interface CreateAsaasSubscriptionArgs {
 }
 
 /**
+ * Plan change (upgrade/downgrade) on an existing subscription — only
+ * `value` is ever sent by our code today. No proration: the new
+ * value takes effect on the next charge Asaas generates, by design
+ * (phase 2 decision — see src/app/api/billing/subscription/route.ts).
+ */
+export interface UpdateAsaasSubscriptionArgs {
+  value: number;
+}
+
+/** Shape of `GET /customers?externalReference=...` — a thin list
+ *  wrapper, same envelope Asaas uses for every list endpoint. */
+export interface AsaasCustomerList {
+  data: AsaasCustomer[];
+}
+
+/**
  * Asaas webhook envelope shape — the `event` field is the raw
  * provider event name (e.g. "PAYMENT_RECEIVED"); `payment` /
  * `subscription` carry whichever object the event is about. Kept

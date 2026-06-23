@@ -598,6 +598,16 @@ export interface AccountSubscription {
   next_due_date: string | null;
   asaas_customer_id: string | null;
   asaas_subscription_id: string | null;
+  /**
+   * Billing contact, phase 2. `billing_name` is plaintext; the other
+   * two are decrypted server-side from `billing_document_encrypted` /
+   * `billing_phone_encrypted` (src/lib/whatsapp/encryption.ts) and
+   * only ever included in a response to an admin/owner caller — see
+   * GET /api/billing/subscription.
+   */
+  billing_name: string | null;
+  billing_document: string | null;
+  billing_phone: string | null;
   created_at: string;
   updated_at: string;
 }
