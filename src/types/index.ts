@@ -542,3 +542,113 @@ export interface AutomationLog {
   created_at: string;
   contact?: Contact;
 }
+
+// ============================================================
+// Plans / billing / channels — phase 1 foundation
+// (024_billing_plans.sql, 025_account_subscriptions.sql,
+// 026_billing_events.sql, 027_usage_counters.sql,
+// 028_account_connections.sql)
+// ============================================================
+
+export interface Plan {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  public_name: string | null;
+  public_description: string | null;
+  price_cents: number;
+  currency: string;
+  max_team_members: number | null;
+  max_connections: number | null;
+  max_automations: number | null;
+  max_contacts: number | null;
+  /** Flat list of enabled feature keys (e.g. "qr_code", "meta_api",
+   *  "priority_support") — not a key/value bag. */
+  features: string[];
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TrialStatus = 'not_applicable' | 'active' | 'expired' | 'converted';
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled';
+/**
+ * The single value the app would read to gate access. Computed
+ * from `trial_status` + `subscription_status` (see
+ * `src/lib/billing/status.ts`) — phase 1 only models and stores
+ * this; nothing reads it to deny access yet.
+ */
+export type AccessStatus = 'trial' | 'active' | 'past_due' | 'blocked' | 'canceled' | 'read_only';
+
+export interface AccountSubscription {
+  id: string;
+  account_id: string;
+  plan_code: string | null;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  trial_status: TrialStatus;
+  subscription_status: SubscriptionStatus;
+  access_status: AccessStatus;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  canceled_at: string | null;
+  grace_ends_at: string | null;
+  next_due_date: string | null;
+  asaas_customer_id: string | null;
+  asaas_subscription_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BillingProcessingStatus = 'pending' | 'processed' | 'failed' | 'ignored';
+
+export interface BillingEvent {
+  id: string;
+  account_id: string | null;
+  provider: 'asaas';
+  event_type: string;
+  provider_event_type: string | null;
+  external_event_id: string | null;
+  payload: Record<string, unknown>;
+  processing_status: BillingProcessingStatus;
+  error_message: string | null;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export type ChannelConnectionType = 'QR_CODE' | 'META_API';
+export type ChannelProvider = 'EVOLUTION' | 'META';
+export type ChannelConnectionStatus =
+  | 'pending'
+  | 'qrcode_ready'
+  | 'connected'
+  | 'disconnected'
+  | 'error';
+
+/**
+ * A row in `account_connections` — the new, parallel channel
+ * architecture. Distinct from `WhatsAppConfig` above, which keeps
+ * powering today's live Meta Cloud API connection unchanged.
+ * `credentials_encrypted` is never sent to the client; API routes
+ * strip it before returning a connection to the browser.
+ */
+export interface AccountConnection {
+  id: string;
+  account_id: string;
+  connection_type: ChannelConnectionType;
+  provider: ChannelProvider;
+  connection_status: ChannelConnectionStatus;
+  label: string | null;
+  is_primary: boolean;
+  phone_number: string | null;
+  external_id: string | null;
+  meta_waba_id: string | null;
+  meta_phone_number_id: string | null;
+  metadata: Record<string, unknown>;
+  connected_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
