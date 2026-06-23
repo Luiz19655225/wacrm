@@ -28,7 +28,7 @@ const TYPE_PROVIDER_PAIRS: Record<ChannelConnectionType, ChannelProvider> = {
 };
 
 const CONNECTION_FIELDS =
-  "id, connection_type, provider, connection_status, label, is_primary, phone_number, external_id, meta_waba_id, meta_phone_number_id, connected_at, last_error, created_at, updated_at";
+  "id, connection_type, provider, connection_status, label, is_primary, phone_number, external_id, meta_waba_id, meta_phone_number_id, metadata, connected_at, last_error, created_at, updated_at";
 
 export async function GET() {
   try {

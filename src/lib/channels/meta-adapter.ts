@@ -11,11 +11,13 @@
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sendTextMessage, verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
 import type { AccountConnection } from '@/types';
-import type {
-  ChannelAdapter,
-  ChannelSendMessageArgs,
-  ChannelSendResult,
-  ChannelStatusResult,
+import {
+  ChannelNotImplementedError,
+  type ChannelAdapter,
+  type ChannelConnectResult,
+  type ChannelSendMessageArgs,
+  type ChannelSendResult,
+  type ChannelStatusResult,
 } from './types';
 
 interface MetaCredentials {
@@ -37,6 +39,14 @@ function readCredentials(connection: AccountConnection): MetaCredentials {
 export const metaAdapter: ChannelAdapter = {
   provider: 'META',
 
+  async connect(): Promise<ChannelConnectResult> {
+    // Meta connection happens out-of-band via Embedded Signup /
+    // POST /api/whatsapp/config, not through this adapter — see
+    // src/lib/channels/types.ts for why this method exists at all
+    // (Evolution's QR pairing needs it).
+    throw new ChannelNotImplementedError('META', 'connect');
+  },
+
   async getStatus(connection: AccountConnection): Promise<ChannelStatusResult> {
     if (!connection.meta_phone_number_id) {
       return { status: 'error', detail: 'Missing meta_phone_number_id' };
@@ -57,6 +67,17 @@ export const metaAdapter: ChannelAdapter = {
   },
 
   async sendMessage(args: ChannelSendMessageArgs): Promise<ChannelSendResult> {
+    if (args.media) {
+      // Not wired through this adapter yet — /api/whatsapp/send calls
+      // src/lib/whatsapp/meta-api.ts's sendMediaMessage directly for
+      // Meta today. Throwing here (rather than silently dropping the
+      // media) keeps that gap visible if something starts routing
+      // Meta media sends through getChannelAdapter().
+      throw new ChannelNotImplementedError('META', 'sendMessage(media)');
+    }
+    if (!args.text) {
+      throw new Error('sendMessage requires text when no media is set');
+    }
     if (!args.connection.meta_phone_number_id) {
       throw new Error(
         `Connection ${args.connection.id} has no meta_phone_number_id`,

@@ -8,6 +8,8 @@ import {
 } from '@/lib/whatsapp/meta-api'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { getChannelAdapter } from '@/lib/channels/registry'
+import type { AccountConnection } from '@/types'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -154,6 +156,26 @@ export async function POST(request: Request) {
         { error: 'Contact phone number not found' },
         { status: 400 }
       )
+    }
+
+    // Evolution-sourced conversations (Fase 3) branch off here, before
+    // any Meta-specific code runs. connection_id is NULL for every
+    // conversation the Meta webhook ever created (see migration
+    // 030_evolution_connections.sql) — this `if` is a no-op for 100%
+    // of conversations that existed before this branch was added.
+    if (conversation.connection_id) {
+      return sendViaEvolution({
+        supabase,
+        accountId,
+        conversationId: conversation_id,
+        connectionId: conversation.connection_id,
+        contactId: contact.id,
+        contactPhone: contact.phone,
+        messageType: message_type,
+        contentText: content_text,
+        mediaUrl: media_url,
+        replyToMessageId: reply_to_message_id,
+      })
     }
 
     // Sanitize and validate phone
@@ -441,4 +463,163 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+}
+
+// ============================================================
+// Evolution send path (Fase 3).
+//
+// Mirrors the shape of the Meta path above (insert message, update
+// conversation, pause active flow) but skips everything Meta-specific:
+// no whatsapp_config lookup, no Meta phone-variant retry, no
+// template/contextMessageId support. Templates aren't a Baileys
+// concept — message_type='template' is rejected here rather than
+// silently falling through.
+// ============================================================
+
+async function sendViaEvolution(args: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any
+  accountId: string
+  conversationId: string
+  connectionId: string
+  contactId: string
+  contactPhone: string
+  messageType: string
+  contentText?: string | null
+  mediaUrl?: string | null
+  replyToMessageId?: string | null
+}) {
+  const {
+    supabase,
+    accountId,
+    conversationId,
+    connectionId,
+    contactId,
+    contactPhone,
+    messageType,
+    contentText,
+    mediaUrl,
+    replyToMessageId,
+  } = args
+
+  if (messageType === 'template') {
+    return NextResponse.json(
+      { error: 'Template messages are not supported on Evolution connections' },
+      { status: 400 },
+    )
+  }
+
+  const { data: connection, error: connError } = await supabase
+    .from('account_connections')
+    .select('id, account_id, external_id, connection_status, provider')
+    .eq('id', connectionId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+
+  if (connError || !connection || connection.provider !== 'EVOLUTION' || !connection.external_id) {
+    return NextResponse.json({ error: 'Evolution connection not found' }, { status: 400 })
+  }
+  if (connection.connection_status !== 'connected') {
+    return NextResponse.json({ error: 'WhatsApp connection is not connected yet' }, { status: 400 })
+  }
+
+  const phone = contactPhone.replace(/\D/g, '')
+  const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const
+
+  let waMessageId = ''
+  try {
+    if ((MEDIA_KINDS as readonly string[]).includes(messageType)) {
+      if (!mediaUrl) {
+        return NextResponse.json(
+          { error: `media_url is required for ${messageType} messages` },
+          { status: 400 },
+        )
+      }
+      const result = await getChannelAdapter('EVOLUTION').sendMessage({
+        connection: connection as unknown as AccountConnection,
+        to: phone,
+        text: contentText || undefined,
+        media: { url: mediaUrl, type: messageType as 'image' | 'video' | 'document' | 'audio' },
+      })
+      waMessageId = result.externalMessageId
+    } else {
+      if (!contentText) {
+        return NextResponse.json(
+          { error: 'content_text is required for text messages' },
+          { status: 400 },
+        )
+      }
+      const result = await getChannelAdapter('EVOLUTION').sendMessage({
+        connection: connection as unknown as AccountConnection,
+        to: phone,
+        text: contentText,
+      })
+      waMessageId = result.externalMessageId
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown Evolution API error'
+    console.error('[whatsapp/send] Evolution send failed:', message)
+    return NextResponse.json({ error: `Evolution API error: ${message}` }, { status: 502 })
+  }
+
+  const { data: messageRecord, error: msgError } = await supabase
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_type: 'agent',
+      content_type: messageType,
+      content_text: contentText || null,
+      media_url: mediaUrl || null,
+      message_id: waMessageId || null,
+      status: 'sent',
+      reply_to_message_id: replyToMessageId || null,
+    })
+    .select()
+    .single()
+
+  if (msgError) {
+    console.error('Error inserting sent message (Evolution):', msgError)
+    return NextResponse.json(
+      { error: `Message sent but failed to save to DB: ${msgError.message}` },
+      { status: 500 },
+    )
+  }
+
+  await supabase
+    .from('conversations')
+    .update({
+      last_message_text: contentText || `[${messageType}]`,
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversationId)
+
+  // Same "agent stepping in pauses the active flow" behavior as the
+  // Meta path — see the comment on the equivalent block above.
+  try {
+    const { error: pauseErr } = await supabaseAdmin()
+      .from('flow_runs')
+      .update({
+        status: 'paused_by_agent',
+        ended_at: new Date().toISOString(),
+        end_reason: 'agent_replied',
+      })
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .eq('status', 'active')
+    if (pauseErr) {
+      console.error('[flows] pause-on-agent-send (Evolution) failed:', pauseErr.message)
+    }
+  } catch (err) {
+    console.error(
+      '[flows] pause-on-agent-send (Evolution) threw:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
+  return NextResponse.json({
+    success: true,
+    message_id: messageRecord.id,
+    whatsapp_message_id: waMessageId,
+  })
 }

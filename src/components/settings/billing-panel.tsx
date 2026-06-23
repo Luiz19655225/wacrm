@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  CheckCircle2,
-  CreditCard,
-  Loader2,
-  Plug,
-  QrCode,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, CreditCard, Loader2, XCircle } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -33,7 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SettingsPanelHead } from "./settings-panel-head";
-import type { AccountConnection, Plan } from "@/types";
+import { ChannelConnectionsPanel } from "./channel-connections-panel";
+import type { Plan } from "@/types";
 
 /**
  * Plan & billing — phase 2.
@@ -83,9 +77,7 @@ export function BillingPanel() {
   const [subscription, setSubscription] = useState<BillingSubscriptionSnapshot | null>(null);
   const [asaasConfigured, setAsaasConfigured] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [connections, setConnections] = useState<AccountConnection[]>([]);
   const [changingPlan, setChangingPlan] = useState<string | null>(null);
-  const [addingConnection, setAddingConnection] = useState<string | null>(null);
 
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [pendingPlanCode, setPendingPlanCode] = useState<string | null>(null);
@@ -97,10 +89,9 @@ export function BillingPanel() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [subRes, plansRes, connRes] = await Promise.all([
+      const [subRes, plansRes] = await Promise.all([
         fetch("/api/billing/subscription"),
         fetch("/api/billing/plans"),
-        fetch("/api/channels/connections"),
       ]);
       if (subRes.ok) {
         const body = await subRes.json();
@@ -110,10 +101,6 @@ export function BillingPanel() {
       if (plansRes.ok) {
         const { plans } = await plansRes.json();
         setPlans(plans ?? []);
-      }
-      if (connRes.ok) {
-        const { connections } = await connRes.json();
-        setConnections(connections ?? []);
       }
     } catch {
       toast.error("Failed to load billing information");
@@ -186,27 +173,6 @@ export function BillingPanel() {
     }
   }
 
-  async function handleAddConnection(connectionType: "QR_CODE" | "META_API") {
-    setAddingConnection(connectionType);
-    try {
-      const res = await fetch("/api/channels/connections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connection_type: connectionType }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: null }));
-        toast.error(error ?? "Failed to create connection");
-        return;
-      }
-      const { reused } = await res.json().catch(() => ({ reused: false }));
-      toast.success(reused ? "A pending connection of this type already exists" : "Connection placeholder created");
-      await fetchAll();
-    } finally {
-      setAddingConnection(null);
-    }
-  }
-
   const trialDaysLeft =
     subscription?.trial_ends_at
       ? Math.max(
@@ -217,9 +183,6 @@ export function BillingPanel() {
           ),
         )
       : null;
-
-  const hasPendingOfType = (type: "QR_CODE" | "META_API") =>
-    connections.some((c) => c.connection_type === type && c.connection_status === "pending");
 
   return (
     <section className="max-w-2xl animate-in fade-in-50 duration-200">
@@ -350,68 +313,7 @@ export function BillingPanel() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-foreground">
-                <Plug className="size-4 text-primary" />
-                Channel connections
-              </CardTitle>
-              <CardDescription>
-                Placeholder connections — not wired to a live session yet.
-                Your working WhatsApp connection lives in the WhatsApp
-                section and is unaffected.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {connections.map((conn) => (
-                <div
-                  key={conn.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
-                >
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {conn.label ?? conn.connection_type}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {conn.provider} · {conn.connection_status}
-                    </p>
-                  </div>
-                  <Badge variant="outline">{conn.connection_status}</Badge>
-                </div>
-              ))}
-
-              {canEditSettings && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={addingConnection === "QR_CODE" || hasPendingOfType("QR_CODE")}
-                    onClick={() => handleAddConnection("QR_CODE")}
-                  >
-                    {addingConnection === "QR_CODE" ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <QrCode className="size-3.5" />
-                    )}
-                    {hasPendingOfType("QR_CODE") ? "QR Code pending" : "Add QR Code connection"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={addingConnection === "META_API" || hasPendingOfType("META_API")}
-                    onClick={() => handleAddConnection("META_API")}
-                  >
-                    {addingConnection === "META_API" ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Plug className="size-3.5" />
-                    )}
-                    {hasPendingOfType("META_API") ? "Meta API pending" : "Add Meta API connection"}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <ChannelConnectionsPanel />
         </div>
       )}
 
