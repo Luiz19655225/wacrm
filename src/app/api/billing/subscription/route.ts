@@ -19,6 +19,17 @@
 // source of truth for those, so there's never two writers racing on
 // the same columns.
 //
+// Persistence order matters here: the Asaas linkage (customer id,
+// subscription id, plan_code, next_due_date) is committed to
+// Supabase *before* the billing contact (CPF/CNPJ, phone) is
+// encrypted and saved. Found in production: a misconfigured
+// `ENCRYPTION_KEY` made `encrypt()` throw, and when that crash
+// happened inside the same update as the Asaas ids, it discarded a
+// just-created real Asaas subscription's id — the next retry would
+// have created a second, orphaned subscription. Splitting these
+// into two separate updates means an encryption failure can never
+// undo an already-successful Asaas linkage.
+//
 // Without ASAAS_API_KEY, this falls back to the phase 1 behavior:
 // only `plan_code` is updated, nothing calls Asaas. That keeps local
 // dev working with no billing credentials configured at all.
@@ -361,25 +372,65 @@ export async function POST(request: Request) {
         resolvedNextDueDate = updated.nextDueDate ?? nextDueDate;
       }
 
-      const { data: updatedRow, error: updateError } = await admin
+      // Step 1: persist the Asaas linkage *before* touching
+      // encryption at all. This is the data that must never be lost
+      // once Asaas has a real customer/subscription for this
+      // account — a later encryption failure (e.g. a misconfigured
+      // ENCRYPTION_KEY) must never leave a real Asaas subscription
+      // unlinked from our own records, which would otherwise cause
+      // the next retry to create a second, orphaned subscription.
+      const { data: updatedRow, error: linkError } = await admin
         .from("account_subscriptions")
         .update({
           plan_code: planCode,
           asaas_customer_id: asaasCustomerId,
           asaas_subscription_id: asaasSubscriptionId,
           next_due_date: resolvedNextDueDate,
-          billing_name: billingName,
-          billing_document_encrypted: encrypt(billingDocument),
-          billing_phone_encrypted: billingPhone ? encrypt(billingPhone) : current.billing_phone_encrypted,
         })
         .eq("account_id", ctx.accountId)
         .select("plan_code")
         .maybeSingle();
 
-      if (updateError) {
-        console.error("[POST /api/billing/subscription] post-Asaas update error:", updateError);
+      if (linkError) {
+        console.error("[POST /api/billing/subscription] post-Asaas update error:", linkError);
         return NextResponse.json(
           { error: "Plan was updated with Asaas but failed to save locally. Please contact support." },
+          { status: 500 },
+        );
+      }
+
+      // Step 2: encrypt and persist the billing contact, as its own
+      // isolated step. Deliberately outside the try/catch above (its
+      // failures are an encryption/DB problem, not an Asaas problem)
+      // so a bad ENCRYPTION_KEY can never roll back or hide the
+      // Asaas linkage that Step 1 already committed.
+      try {
+        const { error: contactError } = await admin
+          .from("account_subscriptions")
+          .update({
+            billing_name: billingName,
+            billing_document_encrypted: encrypt(billingDocument),
+            billing_phone_encrypted: billingPhone ? encrypt(billingPhone) : current.billing_phone_encrypted,
+          })
+          .eq("account_id", ctx.accountId);
+
+        if (contactError) {
+          console.error("[POST /api/billing/subscription] billing contact persist error:", contactError);
+          return NextResponse.json(
+            {
+              error:
+                "Plan was activated with Asaas, but billing contact info couldn't be saved. Please try again.",
+            },
+            { status: 500 },
+          );
+        }
+      } catch (encryptErr) {
+        console.error("[POST /api/billing/subscription] billing contact encryption failed:", encryptErr);
+        return NextResponse.json(
+          {
+            error:
+              "Plan was activated with Asaas, but billing contact info couldn't be encrypted. Please contact support.",
+          },
           { status: 500 },
         );
       }
