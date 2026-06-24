@@ -189,7 +189,22 @@ export default function InboxPage() {
         .eq("account_id", accountId)
         .maybeSingle();
 
-      setWhatsappConnected(data?.status === "connected");
+      // The Meta Cloud API path (whatsapp_config) isn't the only way
+      // to be connected anymore — account_connections holds Evolution
+      // (QR Code) connections too. Without this check, the banner
+      // showed "not connected" even with a live, working Evolution
+      // session, because it only ever looked at whatsapp_config.
+      const { data: evolutionConnections } = await supabase
+        .from("account_connections")
+        .select("connection_status")
+        .eq("account_id", accountId)
+        .eq("provider", "EVOLUTION");
+
+      const hasConnectedEvolution = (evolutionConnections ?? []).some(
+        (c) => c.connection_status === "connected"
+      );
+
+      setWhatsappConnected(data?.status === "connected" || hasConnectedEvolution);
     };
 
     checkConnection();

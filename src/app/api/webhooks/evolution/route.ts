@@ -48,11 +48,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we ack Evolution promptly, same posture
-  // as the Meta webhook's processWebhook() dispatch.
-  processEvolutionWebhookEvent(payload).catch((error) => {
+  // Awaited (unlike the Meta webhook's fire-and-forget dispatch):
+  // Vercel can suspend/tear down the function right after the
+  // response is sent, and the detached promise here was getting cut
+  // off mid-chain (contact/conversation created, then the later
+  // message insert failing with a bare "TypeError: fetch failed").
+  // Evolution's webhook timeout is generous enough to afford the
+  // extra wait, so this trades a few hundred ms for correctness.
+  try {
+    await processEvolutionWebhookEvent(payload)
+  } catch (error) {
     console.error('[evolution webhook] processing failed:', error)
-  })
+  }
 
   return NextResponse.json({ received: true }, { status: 200 })
 }

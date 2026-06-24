@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './admin-client'
 import { findOrCreateContact, findOrCreateConversation } from './conversation-pipeline'
+import { isUniqueViolation } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 
@@ -151,6 +152,34 @@ function parseEvolutionMessageContent(message: Record<string, unknown> | undefin
   return { contentText: '[Unsupported message type]', contentType: 'text' }
 }
 
+/**
+ * True when `pushName` is actually a raw WhatsApp JID/privacy
+ * identifier (e.g. "255504030892138@lid") rather than a human-entered
+ * name. Baileys reports this verbatim as pushName when WhatsApp's
+ * "linked ID" privacy feature hides the real contact name — without
+ * this check that raw identifier would be saved as the contact's
+ * display name and shown as-is in the Inbox.
+ */
+function isLikelyRawIdentifier(value: string): boolean {
+  return /@(lid|s\.whatsapp\.net|g\.us)$/.test(value)
+}
+
+/**
+ * Group chats (remoteJid ending in @g.us) don't have a single
+ * "contact" the way a 1:1 chat does — there's no per-account
+ * mapping to the real sender yet, this just keeps the group thread
+ * from showing a meaningless raw id as its name. Per-sender
+ * attribution inside groups is a known gap, not solved here.
+ */
+function resolveContactDisplayName(
+  pushName: string | undefined,
+  phone: string,
+  isGroup: boolean,
+): string {
+  if (pushName && !isLikelyRawIdentifier(pushName)) return pushName
+  return isGroup ? `Grupo ${phone}` : phone
+}
+
 async function handleMessagesUpsert(
   connection: EvolutionConnectionRow,
   data: unknown,
@@ -163,14 +192,34 @@ async function handleMessagesUpsert(
   } | undefined
 
   const key = payload?.key
-  if (!key?.id || !key.remoteJid) return
+  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
+  // stable in production (Fase 3 follow-up).
+  console.log('[evolution webhook][diag] messages.upsert payload:', {
+    accountId: connection.account_id,
+    remoteJid: key?.remoteJid,
+    messageId: key?.id,
+    fromMe: key?.fromMe,
+    pushName: payload?.pushName,
+  })
+
+  if (!key?.id || !key.remoteJid) {
+    console.warn('[evolution webhook] messages.upsert missing key.id/remoteJid, ignored')
+    return
+  }
   // Our own outbound message, echoed back by Evolution — already
   // recorded by send/route.ts when we sent it. Recording it again here
   // would duplicate it as an inbound 'customer' message.
-  if (key.fromMe) return
+  if (key.fromMe) {
+    console.log('[evolution webhook][diag] messages.upsert is fromMe — echo of our own send, ignored')
+    return
+  }
 
-  const phone = key.remoteJid.replace(/@s\.whatsapp\.net$/, '').replace(/@g\.us$/, '')
-  const pushName = payload?.pushName
+  const isGroup = key.remoteJid.endsWith('@g.us')
+  const phone = key.remoteJid
+    .replace(/@s\.whatsapp\.net$/, '')
+    .replace(/@g\.us$/, '')
+    .replace(/@lid$/, '')
+  const displayName = resolveContactDisplayName(payload?.pushName, phone, isGroup)
 
   const ownerUserId = await resolveAccountOwnerUserId(connection.account_id)
   if (!ownerUserId) return
@@ -179,8 +228,15 @@ async function handleMessagesUpsert(
     connection.account_id,
     ownerUserId,
     phone,
-    pushName || phone,
+    displayName,
   )
+  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
+  // stable in production (Fase 3 follow-up).
+  console.log('[evolution webhook][diag] findOrCreateContact result:', {
+    success: !!contactOutcome,
+    contactId: contactOutcome?.contact?.id,
+    wasCreated: contactOutcome?.wasCreated,
+  })
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
 
@@ -190,9 +246,14 @@ async function handleMessagesUpsert(
     contactRecord.id,
     connection.id,
   )
+  console.log('[evolution webhook][diag] findOrCreateConversation result:', {
+    success: !!conversation,
+    conversationId: conversation?.id,
+  })
   if (!conversation) return
 
   const { contentText, contentType } = parseEvolutionMessageContent(payload?.message)
+  console.log('[evolution webhook][diag] parsed message content:', { contentType, contentText })
 
   const timestampRaw = payload?.messageTimestamp
   const timestampSeconds = typeof timestampRaw === 'number'
@@ -206,28 +267,39 @@ async function handleMessagesUpsert(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  // ON CONFLICT DO NOTHING absorbs Evolution redelivering the same
-  // messages.upsert event — see migration 030's unique index on
-  // (conversation_id, message_id).
+  // Plain insert + 23505 check, not .upsert({onConflict}). The
+  // (conversation_id, message_id) unique index from migration 030 is
+  // PARTIAL ("WHERE message_id IS NOT NULL") — Postgres only treats a
+  // bare column-list ON CONFLICT target as matching a partial index
+  // when the conflict clause repeats the same WHERE predicate
+  // verbatim, which Supabase's upsert({onConflict}) has no way to
+  // express. That mismatch made every insert here fail (logged as
+  // "insert message failed"), so a redelivered event is instead
+  // absorbed by catching the unique violation after a normal insert —
+  // same pattern findOrCreateContact already uses above.
   const { error: msgError } = await supabaseAdmin()
     .from('messages')
-    .upsert(
-      {
-        conversation_id: conversation.id,
-        sender_type: 'customer',
-        content_type: contentType,
-        content_text: contentText,
-        message_id: key.id,
-        status: 'delivered',
-        created_at: new Date(timestampSeconds * 1000).toISOString(),
-      },
-      { onConflict: 'conversation_id,message_id', ignoreDuplicates: true },
-    )
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      message_id: key.id,
+      status: 'delivered',
+      created_at: new Date(timestampSeconds * 1000).toISOString(),
+    })
 
-  if (msgError) {
+  if (msgError && !isUniqueViolation(msgError)) {
     console.error('[evolution webhook] insert message failed:', msgError.message)
     return
   }
+  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
+  // stable in production (Fase 3 follow-up).
+  console.log('[evolution webhook][diag] message insert result:', {
+    success: !msgError,
+    duplicateDelivery: !!msgError && isUniqueViolation(msgError),
+  })
+  if (msgError) return // duplicate delivery, already recorded — skip downstream side-effects
 
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
@@ -288,6 +360,13 @@ export interface EvolutionWebhookPayload {
  * time; this must not start rejecting webhook deliveries on a 200).
  */
 export async function processEvolutionWebhookEvent(payload: EvolutionWebhookPayload): Promise<void> {
+  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
+  // stable in production (Fase 3 follow-up).
+  console.log('[evolution webhook][diag] event received:', {
+    event: payload.event,
+    instance: payload.instance,
+  })
+
   if (!payload.instance) {
     console.warn('[evolution webhook] payload missing instance, ignored')
     return
