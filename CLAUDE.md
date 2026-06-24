@@ -76,28 +76,40 @@ Publicada no commit `754ce90` (push em 23/06/2026). **Status final: concluída e
 - Sandbox limpo ao final: 1 única subscription ativa (a real), sem órfãs, `penalizedRequestsCount: 3` (não cresceu após a limpeza), webhook seguindo `enabled`/sem interrupção.
 - Enforcement real (bloquear CRM/automações por `access_status`) continua sendo Fase 3 — não iniciar sem aprovação explícita.
 
-## Fase 3 — Evolution API (WhatsApp) — implementada localmente, aguardando deploy de infra (23/06/2026)
-Código completo. **Ainda não está rodando em produção** — falta provisionar o servidor Evolution (Railway) e configurar as env vars na Vercel antes de qualquer teste real.
+## Fase 3 — Evolution API (WhatsApp) — ~95% concluída e validada em produção (23/06/2026)
+Infra no ar, inbound (recebimento) validado de ponta a ponta em produção real. Falta apenas outbound (envio) e mídias para fechar 100%.
 
 - **Racional da decisão**: Evolution API como **ponte rápida** para validar WhatsApp, Inbox e atendimento real. Meta Cloud API não foi descartada, fica para fase futura; `whatsapp_config` (a conexão Meta real, em produção) não foi tocada.
-- **Banco**: migration `030_evolution_connections.sql` — `conversations.connection_id` (nullable, FK), UNIQUE parcial em `account_connections(provider, external_id)`, UNIQUE parcial em `messages(conversation_id, message_id)`. 100% aditivo. **Ainda não aplicada no Supabase** — projeto não está linkado via Supabase CLI (sem `config.toml`/`.temp`, mesma situação da migration 029); precisa ser rodada manualmente no SQL editor do Supabase, como as anteriores.
+- **Banco**: migration `030_evolution_connections.sql` — `conversations.connection_id` (nullable, FK), UNIQUE parcial em `account_connections(provider, external_id)`, UNIQUE parcial em `messages(conversation_id, message_id)`. 100% aditivo. **Aplicada manualmente no Supabase pelo usuário e validada.**
+- **Infraestrutura provisionada e validada**: Evolution API + Redis online no Railway (Postgres próprio, separado do Supabase do projeto); `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_TOKEN` configurados na Vercel (produção); deploy de produção concluído e publicado em `www.wavon.com.br`.
 - **Achado de arquitetura durante a implementação**: já existia um `ChannelAdapter` (`src/lib/channels/types.ts` + `registry.ts` + `meta-adapter.ts` + `evolution-adapter.ts`) da Fase 1, com `evolutionAdapter` como stub que só lançava erro — não apareceu na exploração inicial do plano. Corrigido para seguir esse padrão: `src/lib/whatsapp/evolution-api.ts` é o cliente HTTP cru (papel idêntico a `meta-api.ts`), e `evolution-adapter.ts` foi implementado de verdade por cima dele. Toda rota chama `getChannelAdapter(provider)`, nunca o cliente Evolution direto.
 - **Extraído** (refactor mecânico, sem mudar comportamento Meta): `findOrCreateContact`/`findOrCreateConversation` saíram de `whatsapp/webhook/route.ts` para `src/lib/whatsapp/conversation-pipeline.ts`, com `connectionId` como parâmetro explícito (`null` no caminho Meta, preservando o comportamento de hoje byte a byte). Também criado `src/lib/whatsapp/admin-client.ts` (client admin compartilhado, mesmo padrão de `src/lib/billing/admin-client.ts`), substituindo o singleton privado que existia dentro do webhook do Meta.
 - **Novos arquivos**: `src/lib/whatsapp/evolution-api.ts`, `src/lib/whatsapp/evolution-webhook-processor.ts`, `src/app/api/webhooks/evolution/route.ts`, `src/app/api/channels/connections/[id]/connect/route.ts`, `src/app/api/channels/connections/[id]/route.ts` (DELETE), `src/components/settings/channel-connections-panel.tsx`.
 - **UI**: o card "Channel connections" foi extraído de `billing-panel.tsx` para `channel-connections-panel.tsx` (decisão explícita do usuário, para nunca precisar tocar em código de billing por causa de WhatsApp). Mostra QR code, faz polling no `GET /api/channels/connections` existente, botão de desconectar.
-- **Gap conhecido, não implementado nesta rodada**: download/decrypt de mídia inbound da Evolution (Baileys) — mensagens de mídia chegam como placeholder textual (`[image]` etc.), não com o arquivo real. Texto funciona de ponta a ponta. Também não há endpoint de reconciliação ativa (`fetchConnectionState`/`getStatus` do adapter existem, mas nada os expõe ainda) para o caso do webhook de conexão atrasar.
-- **Typecheck e lint limpos** (`npx tsc --noEmit`, `npx eslint`) em todos os arquivos novos/tocados. Nenhum teste de ponta a ponta contra um servidor Evolution real ainda — não havia um disponível nesta sessão.
+- **Bugs encontrados e corrigidos no teste real em produção (23/06/2026)**:
+  1. `/api/webhooks/evolution` respondia `200` antes de esperar o processamento (`processEvolutionWebhookEvent(...).catch(...)` sem `await`) — a Vercel podia encerrar a função no meio da cadeia, criando `contact`/`conversation` mas nunca chegando a gravar a `message`. Corrigido: agora dá `await` no processamento antes do `return 200`, que passou a ser o último statement do handler.
+  2. Erro reproduzível `insert message failed: TypeError: fetch failed` — causa real: o índice único `(conversation_id, message_id)` da migration 030 é **parcial** (`WHERE message_id IS NOT NULL`), e `.upsert({onConflict})` do Supabase não consegue casar com um índice parcial (Postgres exige repetir o `WHERE` no próprio `ON CONFLICT`, o que o client não expõe). Corrigido: trocado por `insert()` simples + checagem de violação de unicidade (`isUniqueViolation`, 23505), mesmo padrão já usado em `findOrCreateContact`.
+  3. Nome de contato exibindo identificador bruto do WhatsApp (`255504030892138@lid`) em vez de um nome legível — Baileys reporta `pushName` como o próprio JID/`@lid` quando a privacidade "linked ID" do WhatsApp esconde o nome real. Corrigido com `resolveContactDisplayName()`: só usa `pushName` se ele não for ele mesmo um JID/lid; senão cai para `"Grupo <id>"` (grupos) ou o telefone puro.
+  4. Banner "WhatsApp is not connected" no Inbox falso-negativo mesmo com a Evolution conectada — `inbox/page.tsx` só checava `whatsapp_config` (Meta). Corrigido: agora também checa `account_connections` (`provider='EVOLUTION'`, `connection_status='connected'`).
+  - Commits: `c2b2b34` (implementação Fase 3) + `e7e0571` (correções acima), ambos em produção (`dpl_9s6KSGibzCsrivq6rCvWRaJmib5J`).
+- **Validado em produção real**: QR Code → conexão → `account_connections.connection_status='connected'` → mensagem real recebida no WhatsApp conectado → `contacts` criado → `conversations` criada com `connection_id` correto → `messages` gravada → conversa abre no Inbox com histórico visível. Evidência: conversas "Luiz Abrahao-Abracred", "Caçador De Liquidação" e "Flavio Strate Finance" exibindo mensagens/histórico real na interface.
+- **Logs temporários de diagnóstico ainda no código** (`evolution-webhook-processor.ts`, marcados `// TEMP DIAGNOSTIC LOG`) — adicionados para validar o fluxo de ingestão; remover numa rodada futura depois de mais alguns dias de operação estável.
+- **Gap conhecido, não implementado ainda**: download/decrypt de mídia inbound da Evolution (Baileys) — mensagens de mídia chegam como placeholder textual (`[image]` etc.) ou `[Unsupported message type]`, não com o arquivo real; UI mostra "Image unavailable". Texto funciona de ponta a ponta. Também não há endpoint de reconciliação ativa (`fetchConnectionState`/`getStatus` do adapter existem, mas nada os expõe ainda) para o caso do webhook de conexão atrasar. Mensagens de grupo (`@g.us`) criam um "contato" por grupo, não por remetente real — não há atribuição por pessoa dentro do grupo.
+- **Ainda não testado**: envio de mensagens do WAVON para o WhatsApp (outbound, `send/route.ts` → `sendViaEvolution`). Só o caminho de recebimento (inbound) foi validado nesta sessão.
+- **Typecheck e lint limpos** (`npm run typecheck`, `npm run build`) em todas as rodadas desta fase.
 
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
 Fase 2 fechada, sem pendências bloqueantes.
 
-Fase 3 (Evolution API): antes de testar de verdade —
-1. Rodar `030_evolution_connections.sql` manualmente no SQL editor do Supabase.
-2. Provisionar um servidor Evolution API (Railway recomendado) com Postgres/Redis próprios.
-3. Configurar `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_TOKEN` na Vercel (ver `.env.local.example`).
-4. Testar o fluxo QR Code → Conexão → Conversas → Inbox com uma conta de teste.
+Fase 3 (Evolution API) — ~95% concluída. Falta para fechar 100% (próxima sessão):
+1. Testar envio de mensagens do WAVON para o WhatsApp (outbound) e validar que chega no destinatário real.
+2. Tratar mídias inbound (imagem, áudio, vídeo, documento) — hoje só chegam como placeholder/`[Unsupported message type]`.
+3. Resolver "Image unavailable" no Inbox.
+4. Revisar UX do Inbox (achados visuais durante os testes desta sessão).
+5. Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` depois de confirmar estabilidade.
+6. Planejar a próxima fase (automações e IA) depois de Fase 3 fechada.
 
 Pendência não-bloqueante: adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 acima) — não relacionada à Fase 3.
 
@@ -105,6 +117,6 @@ Pendência não-bloqueante: adicionar `SUBSCRIPTION_CANCELED` aos eventos do web
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.
 - Preservar registros de e-mail/serviços da HostGator (mail, webmail, cpanel, whm).
 - Não copiar literalmente a documentação do template de origem; não expor detalhes sensíveis de infraestrutura/deploy/secrets no conteúdo público.
-- **WhatsApp: Evolution API** (decisão revertida em 23/06/2026, substituindo a regra anterior "apenas Meta Business Cloud API" — decisão explícita e intencional do usuário, confirmada após eu apontar o conflito com a regra antiga). Usada como ponte rápida para validar WhatsApp, Inbox e atendimento real; Meta Cloud API fica para uma fase futura. Ver seção "Fase 3" acima.
+- **WhatsApp: Evolution API** (decisão revertida em 23/06/2026, substituindo a regra anterior "apenas Meta Business Cloud API" — decisão explícita e intencional do usuário, confirmada após eu apontar o conflito com a regra antiga). Usada como ponte rápida para validar WhatsApp, Inbox e atendimento real; Meta Cloud API fica para uma fase futura. Inbound validado em produção; outbound ainda não testado. Ver seção "Fase 3" acima.
 - Fase 2 (billing real Asaas) concluída e validada — ver seção acima.
 - Enforcement real (bloquear CRM/automações por `access_status`) é uma fase futura própria (depois da Fase 3), não iniciar sem aprovação explícita.

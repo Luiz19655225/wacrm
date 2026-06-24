@@ -27,6 +27,7 @@
 
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { ModeToggle } from '@/components/layout/mode-toggle';
 
 export const metadata: Metadata = {
   referrer: 'no-referrer',
@@ -38,6 +39,9 @@ export const metadata: Metadata = {
 export default function JoinLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="fixed top-4 right-4 z-10">
+        <ModeToggle />
+      </div>
       {children}
     </div>
   );

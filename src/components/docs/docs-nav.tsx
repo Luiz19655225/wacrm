@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { WavonLogoReduced } from "@/components/brand/wavon-logo";
 import { buttonVariants } from "@/components/ui/button";
+import { ModeToggle } from "@/components/layout/mode-toggle";
 
 export function DocsNav() {
   return (
@@ -16,6 +17,7 @@ export function DocsNav() {
         </div>
 
         <div className="flex items-center gap-2">
+          <ModeToggle />
           <Link
             href="/"
             className={buttonVariants({ variant: "ghost", className: "px-3" })}

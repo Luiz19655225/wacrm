@@ -53,19 +53,19 @@ interface BillingSubscriptionSnapshot {
 }
 
 const SUBSCRIPTION_STATUS_LABEL: Record<string, string> = {
-  trialing: "Trial",
-  active: "Active",
-  past_due: "Payment overdue",
-  canceled: "Canceled",
+  trialing: "Teste",
+  active: "Ativo",
+  past_due: "Pagamento atrasado",
+  canceled: "Cancelado",
 };
 
 const ACCESS_STATUS_LABEL: Record<string, string> = {
-  trial: "Trial",
-  active: "Active",
-  past_due: "Payment overdue",
-  blocked: "Blocked",
-  canceled: "Canceled",
-  read_only: "Read-only",
+  trial: "Teste",
+  active: "Ativo",
+  past_due: "Pagamento atrasado",
+  blocked: "Bloqueado",
+  canceled: "Cancelado",
+  read_only: "Somente leitura",
 };
 
 const WARNING_ACCESS_STATUSES = new Set(["past_due", "blocked", "canceled", "read_only"]);
@@ -103,7 +103,7 @@ export function BillingPanel() {
         setPlans(plans ?? []);
       }
     } catch {
-      toast.error("Failed to load billing information");
+      toast.error("Falha ao carregar informações de cobrança");
     } finally {
       setLoading(false);
     }
@@ -123,7 +123,7 @@ export function BillingPanel() {
       body: JSON.stringify({ plan_code: planCode, ...contact }),
     });
     if (res.ok) {
-      toast.success("Plan updated");
+      toast.success("Plano atualizado");
       await fetchAll();
       return "ok";
     }
@@ -131,7 +131,7 @@ export function BillingPanel() {
     if (body?.error === "MISSING_BILLING_INFO") {
       return "missing_billing_info";
     }
-    toast.error(body?.error ?? body?.message ?? "Failed to update plan");
+    toast.error(body?.error ?? body?.message ?? "Falha ao atualizar o plano");
     return "error";
   }
 
@@ -154,7 +154,7 @@ export function BillingPanel() {
   async function handleSubmitBillingContact() {
     if (!pendingPlanCode) return;
     if (!billingDocument.trim()) {
-      toast.error("CPF or CNPJ is required");
+      toast.error("CPF ou CNPJ é obrigatório");
       return;
     }
     setSubmittingContact(true);
@@ -187,20 +187,20 @@ export function BillingPanel() {
   return (
     <section className="max-w-2xl animate-in fade-in-50 duration-200">
       <SettingsPanelHead
-        title="Plan & billing"
-        description="Your plan, trial status, billing, and channel connections."
+        title="Plano e cobrança"
+        description="Seu plano, status do teste, cobrança e conexões de canal."
       />
 
       {!asaasConfigured && (
         <Alert className="mb-5 border-primary/30 bg-primary/5">
           <CreditCard className="size-4 text-primary" />
-          <AlertTitle>Billing not connected yet</AlertTitle>
+          <AlertTitle>Cobrança ainda não conectada</AlertTitle>
           <AlertDescription>
-            No live Asaas billing is configured in this environment yet — choosing a
-            plan below only records your preference. Channel connections are still
-            placeholders too; they don&apos;t open a live WhatsApp session. Nothing
-            here affects your current WhatsApp setup in the{" "}
-            <span className="font-medium text-foreground">WhatsApp</span> section.
+            Nenhuma cobrança real via Asaas está configurada neste ambiente ainda —
+            escolher um plano abaixo apenas registra sua preferência. As conexões de
+            canal também são placeholders por enquanto; elas não abrem uma sessão de
+            WhatsApp real. Nada aqui afeta sua configuração atual de WhatsApp na seção{" "}
+            <span className="font-medium text-foreground">WhatsApp</span>.
           </AlertDescription>
         </Alert>
       )}
@@ -208,7 +208,7 @@ export function BillingPanel() {
       {loading || profileLoading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading...
+          Carregando...
         </div>
       ) : (
         <div className="space-y-6">
@@ -216,21 +216,21 @@ export function BillingPanel() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
                 <CreditCard className="size-4 text-primary" />
-                Current status
+                Status atual
               </CardTitle>
               <CardDescription>
                 {subscription?.plan_code
-                  ? `Plan: ${subscription.plan_code}`
-                  : "No plan selected yet"}
+                  ? `Plano: ${subscription.plan_code}`
+                  : "Nenhum plano selecionado ainda"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={WARNING_ACCESS_STATUSES.has(subscription?.access_status ?? "") ? "destructive" : "outline"}>
-                  {ACCESS_STATUS_LABEL[subscription?.access_status ?? ""] ?? "Unknown"}
+                  {ACCESS_STATUS_LABEL[subscription?.access_status ?? ""] ?? "Desconhecido"}
                 </Badge>
                 <Badge variant="outline">
-                  Billing: {SUBSCRIPTION_STATUS_LABEL[subscription?.subscription_status ?? ""] ?? "Unknown"}
+                  Cobrança: {SUBSCRIPTION_STATUS_LABEL[subscription?.subscription_status ?? ""] ?? "Desconhecido"}
                 </Badge>
                 <Badge variant="outline" className="gap-1">
                   {subscription?.asaas_connected ? (
@@ -238,19 +238,19 @@ export function BillingPanel() {
                   ) : (
                     <XCircle className="size-3" />
                   )}
-                  Connected to Asaas: {subscription?.asaas_connected ? "Yes" : "No"}
+                  Conectado ao Asaas: {subscription?.asaas_connected ? "Sim" : "Não"}
                 </Badge>
               </div>
               {trialDaysLeft !== null && (
                 <p className="text-sm text-muted-foreground">
                   {trialDaysLeft > 0
-                    ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your trial.`
-                    : "Trial period has ended."}
+                    ? `Faltam ${trialDaysLeft} dia${trialDaysLeft === 1 ? "" : "s"} do seu teste.`
+                    : "O período de teste terminou."}
                 </p>
               )}
               {subscription?.next_due_date && (
                 <p className="text-sm text-muted-foreground">
-                  Next charge: {subscription.next_due_date}
+                  Próxima cobrança: {subscription.next_due_date}
                 </p>
               )}
             </CardContent>
@@ -258,16 +258,16 @@ export function BillingPanel() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Plans</CardTitle>
+              <CardTitle className="text-foreground">Planos</CardTitle>
               <CardDescription>
-                All plans support both QR Code and Meta API connections —
-                plans differ in limits, not in connection type.
+                Todos os planos suportam conexões via QR Code e Meta API —
+                os planos diferem nos limites, não no tipo de conexão.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {plans.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No plans configured yet.
+                  Nenhum plano configurado ainda.
                 </p>
               ) : (
                 plans.map((plan) => (
@@ -280,8 +280,8 @@ export function BillingPanel() {
                         {plan.public_name ?? plan.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {plan.max_connections ?? "Unlimited"} connection(s) ·{" "}
-                        {plan.max_team_members ?? "Unlimited"} member(s)
+                        {plan.max_connections ?? "Ilimitadas"} conexão(ões) ·{" "}
+                        {plan.max_team_members ?? "Ilimitados"} membro(s)
                       </p>
                     </div>
                     {canEditSettings && (
@@ -301,9 +301,9 @@ export function BillingPanel() {
                         {changingPlan === plan.code ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : subscription?.plan_code === plan.code ? (
-                          "Current"
+                          "Atual"
                         ) : (
-                          "Use this plan"
+                          "Usar este plano"
                         )}
                       </Button>
                     )}
@@ -326,24 +326,24 @@ export function BillingPanel() {
       >
         <DialogContent className="bg-popover border-border sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-popover-foreground">Billing details</DialogTitle>
+            <DialogTitle className="text-popover-foreground">Dados de cobrança</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Asaas requires a CPF or CNPJ to activate a paid plan. This is stored
-              encrypted and only visible to account admins.
+              A Asaas exige um CPF ou CNPJ para ativar um plano pago. Isso é
+              armazenado de forma criptografada e só fica visível para admins da conta.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label className="text-muted-foreground">Billing name</Label>
+              <Label className="text-muted-foreground">Nome para cobrança</Label>
               <Input
                 value={billingName}
                 onChange={(e) => setBillingName(e.target.value)}
-                placeholder="Name on the invoice"
+                placeholder="Nome na fatura"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-muted-foreground">CPF or CNPJ</Label>
+              <Label className="text-muted-foreground">CPF ou CNPJ</Label>
               <Input
                 value={billingDocument}
                 onChange={(e) => setBillingDocument(e.target.value)}
@@ -351,7 +351,7 @@ export function BillingPanel() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-muted-foreground">Phone (optional)</Label>
+              <Label className="text-muted-foreground">Telefone (opcional)</Label>
               <Input
                 value={billingPhone}
                 onChange={(e) => setBillingPhone(e.target.value)}
@@ -366,10 +366,10 @@ export function BillingPanel() {
               onClick={() => setContactDialogOpen(false)}
               disabled={submittingContact}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handleSubmitBillingContact} disabled={submittingContact}>
-              {submittingContact ? <Loader2 className="size-3.5 animate-spin" /> : "Confirm and activate plan"}
+              {submittingContact ? <Loader2 className="size-3.5 animate-spin" /> : "Confirmar e ativar plano"}
             </Button>
           </DialogFooter>
         </DialogContent>

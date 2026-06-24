@@ -27,6 +27,16 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  /**
+   * Gates drag-and-drop. Mirrors the `deals_update` RLS policy
+   * (agent+) — without this, a viewer-role user could drag a card
+   * and see it animate into the new column, but the persisting
+   * `UPDATE` would be silently filtered out by RLS (0 rows affected,
+   * no error), so the card would just snap back on the next reload
+   * with no explanation. Disabling the drag itself avoids that
+   * confusing dead end.
+   */
+  canMoveDeal: boolean;
 }
 
 export function PipelineBoard({
@@ -35,6 +45,7 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  canMoveDeal,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -118,6 +129,7 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              canMoveDeal={canMoveDeal}
             />
           );
         })}
@@ -192,6 +204,7 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  canMoveDeal,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -199,6 +212,7 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  canMoveDeal: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
@@ -237,7 +251,7 @@ function StageColumn({
       >
         {deals.length === 0 ? (
           <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border py-10 text-xs text-muted-foreground">
-            Drop a deal here
+            Solte uma negociação aqui
           </div>
         ) : (
           deals.map((deal) => (
@@ -246,6 +260,7 @@ function StageColumn({
               deal={deal}
               stage={stage}
               onEdit={onEditDeal}
+              disabled={!canMoveDeal}
             />
           ))
         )}
@@ -258,7 +273,7 @@ function StageColumn({
         className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
       >
         <Plus className="mr-1 h-3 w-3" />
-        Add Deal
+        Adicionar negociação
       </Button>
     </div>
   );
@@ -268,21 +283,24 @@ function DraggableDealCard({
   deal,
   stage,
   onEdit,
+  disabled,
 }: {
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
+  disabled: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
+    disabled,
   });
 
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...(disabled ? {} : listeners)}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: disabled ? "auto" : "none" }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>

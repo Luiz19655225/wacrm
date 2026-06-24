@@ -95,7 +95,7 @@ export default function AgenteDeIaPage() {
       </ul>
 
       <h2>O que ele não deve prometer</h2>
-      <p>O agente de IA do WAVON não deve ser apresentado como uma "IA universal" ou como substituto total da equipe.</p>
+      <p>O agente de IA do WAVON não deve ser apresentado como uma &quot;IA universal&quot; ou como substituto total da equipe.</p>
       <p>O posicionamento correto é:</p>
       <ul>
         {POSITIONING.map((item) => (
@@ -185,7 +185,7 @@ export default function AgenteDeIaPage() {
       <p>Não é um bot isolado. Ele faz parte do CRM, da rotina e do histórico.</p>
 
       <h3>2. Ele prepara o humano</h3>
-      <p>A IA não joga a conversa "crua" para a equipe. Ela organiza contexto, intenção, dados e direção.</p>
+      <p>A IA não joga a conversa &quot;crua&quot; para a equipe. Ela organiza contexto, intenção, dados e direção.</p>
 
       <h3>3. Ele sustenta continuidade</h3>
       <p>Mesmo fora do horário, o lead não fica sem resposta e a operação não perde contexto.</p>

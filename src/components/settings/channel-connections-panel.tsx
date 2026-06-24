@@ -30,6 +30,18 @@ import type { AccountConnection } from "@/types";
 
 const POLL_INTERVAL_MS = 4000;
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: "pendente",
+  qrcode_ready: "QR code pronto",
+  connected: "conectado",
+  disconnected: "desconectado",
+  failed: "falhou",
+};
+
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
 export function ChannelConnectionsPanel() {
   const { canEditSettings } = useAuth();
 
@@ -48,7 +60,7 @@ export function ChannelConnectionsPanel() {
         setConnections(connections ?? []);
       }
     } catch {
-      toast.error("Failed to load channel connections");
+      toast.error("Falha ao carregar conexões de canal");
     } finally {
       setLoading(false);
     }
@@ -93,7 +105,7 @@ export function ChannelConnectionsPanel() {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: null }));
-        toast.error(error ?? "Failed to start WhatsApp pairing");
+        toast.error(error ?? "Falha ao iniciar o pareamento do WhatsApp");
         return;
       }
       await fetchConnections();
@@ -112,14 +124,14 @@ export function ChannelConnectionsPanel() {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: null }));
-        toast.error(error ?? "Failed to create connection");
+        toast.error(error ?? "Falha ao criar conexão");
         return;
       }
       const data = await res
         .json()
         .catch(() => ({ connection: null as AccountConnection | null, reused: false }));
       toast.success(
-        data.reused ? "A pending connection of this type already exists" : "Connection created",
+        data.reused ? "Já existe uma conexão pendente deste tipo" : "Conexão criada",
       );
       await fetchConnections();
 
@@ -142,10 +154,10 @@ export function ChannelConnectionsPanel() {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: null }));
-        toast.error(error ?? "Failed to disconnect");
+        toast.error(error ?? "Falha ao desconectar");
         return;
       }
-      toast.success("Disconnected");
+      toast.success("Desconectado");
       await fetchConnections();
     } finally {
       setRemovingId(null);
@@ -157,18 +169,18 @@ export function ChannelConnectionsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-foreground">
           <Plug className="size-4 text-primary" />
-          Channel connections
+          Conexões de canal
         </CardTitle>
         <CardDescription>
-          Connect WhatsApp via QR Code (Evolution API) or Meta API. Your
-          existing WhatsApp setup in the WhatsApp section is unaffected.
+          Conecte o WhatsApp via QR Code (Evolution API) ou Meta API. Sua
+          configuração existente do WhatsApp na seção WhatsApp não é afetada.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            Loading...
+            Carregando...
           </div>
         ) : (
           connections.map((conn) => {
@@ -181,11 +193,11 @@ export function ChannelConnectionsPanel() {
                       {conn.label ?? conn.connection_type}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {conn.provider} · {conn.connection_status}
+                      {conn.provider} · {statusLabel(conn.connection_status)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{conn.connection_status}</Badge>
+                    <Badge variant="outline">{statusLabel(conn.connection_status)}</Badge>
                     {canEditSettings &&
                       conn.connection_type === "QR_CODE" &&
                       conn.connection_status !== "connected" && (
@@ -198,7 +210,7 @@ export function ChannelConnectionsPanel() {
                           {connectingId === conn.id ? (
                             <Loader2 className="size-3.5 animate-spin" />
                           ) : (
-                            "Generate QR"
+                            "Gerar QR"
                           )}
                         </Button>
                       )}
@@ -228,11 +240,11 @@ export function ChannelConnectionsPanel() {
                           ? qrcodeBase64
                           : `data:image/png;base64,${qrcodeBase64}`
                       }
-                      alt="WhatsApp QR code"
+                      alt="QR code do WhatsApp"
                       className="size-48"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Scan with WhatsApp &gt; Linked devices &gt; Link a device.
+                      Escaneie em WhatsApp &gt; Dispositivos conectados &gt; Conectar um dispositivo.
                     </p>
                   </div>
                 )}
@@ -254,7 +266,7 @@ export function ChannelConnectionsPanel() {
               ) : (
                 <QrCode className="size-3.5" />
               )}
-              {hasPendingOfType("QR_CODE") ? "QR Code pending" : "Add QR Code connection"}
+              {hasPendingOfType("QR_CODE") ? "QR Code pendente" : "Adicionar conexão QR Code"}
             </Button>
             <Button
               size="sm"
@@ -267,7 +279,7 @@ export function ChannelConnectionsPanel() {
               ) : (
                 <Plug className="size-3.5" />
               )}
-              {hasPendingOfType("META_API") ? "Meta API pending" : "Add Meta API connection"}
+              {hasPendingOfType("META_API") ? "Meta API pendente" : "Adicionar conexão Meta API"}
             </Button>
           </div>
         )}

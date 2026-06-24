@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { WavonLogoReduced } from "@/components/brand/wavon-logo";
 import { buttonVariants } from "@/components/ui/button";
+import { ModeToggle } from "@/components/layout/mode-toggle";
 
 export function MarketingNav() {
   return (
@@ -20,6 +21,7 @@ export function MarketingNav() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <ModeToggle />
           <Link
             href="/login"
             className={buttonVariants({ variant: "ghost", className: "px-3" })}
