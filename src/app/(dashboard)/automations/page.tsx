@@ -16,6 +16,7 @@ import {
   Users,
   PhoneCall,
   Loader2,
+  Briefcase,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -48,6 +49,7 @@ const TEMPLATE_ORDER: TemplateSlug[] = [
   "out_of_office",
   "lead_qualifier",
   "follow_up_reminder",
+  "new_contact_to_pipeline",
 ]
 
 const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
@@ -55,6 +57,7 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
   out_of_office: Clock,
   lead_qualifier: Users,
   follow_up_reminder: PhoneCall,
+  new_contact_to_pipeline: Briefcase,
 }
 
 export default function AutomationsPage() {

@@ -1,6 +1,8 @@
 import { supabaseAdmin } from './admin-client'
 import { findOrCreateContact, findOrCreateConversation } from './conversation-pipeline'
+import { getBase64FromMediaMessage } from './evolution-api'
 import { isUniqueViolation } from '@/lib/contacts/dedupe'
+import { buildMediaPath } from '@/lib/storage/upload-media'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 
@@ -21,13 +23,14 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine'
 interface EvolutionConnectionRow {
   id: string
   account_id: string
+  external_id: string
   metadata: Record<string, unknown>
 }
 
 async function resolveConnection(instanceName: string): Promise<EvolutionConnectionRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('account_connections')
-    .select('id, account_id, metadata')
+    .select('id, account_id, external_id, metadata')
     .eq('provider', 'EVOLUTION')
     .eq('external_id', instanceName)
     .maybeSingle()
@@ -114,13 +117,18 @@ async function handleConnectionUpdate(
 }
 
 /**
- * Maps a Baileys-shaped inbound message envelope to the same
- * {contentText, contentType} pair parseMessageContent() produces for
- * Meta. Text is handled fully. Media types are recorded with a
- * readable placeholder rather than dropped — downloading/decrypting
- * Evolution media is a known follow-up, not implemented in this pass
- * (see Fase 3 plan).
+ * Maps a Baileys message envelope to the media-bearing key name
+ * getBase64FromMediaMessage needs (e.g. 'imageMessage'), or null when
+ * the message carries no downloadable media. Mirrors the key list
+ * Evolution itself iterates (TypeMediaMessage, src/api/types/wa.types.ts)
+ * minus 'ptvMessage' (video note — not surfaced as a distinct content
+ * type in the inbox yet, falls through to text/placeholder).
  */
+function findMediaMessageKey(message: Record<string, unknown>): string | null {
+  const keys = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage']
+  return keys.find((k) => message[k]) ?? null
+}
+
 function parseEvolutionMessageContent(message: Record<string, unknown> | undefined): {
   contentText: string | null
   contentType: 'text' | 'image' | 'video' | 'audio' | 'document'
@@ -136,20 +144,68 @@ function parseEvolutionMessageContent(message: Record<string, unknown> | undefin
     return { contentText: extended.text, contentType: 'text' }
   }
 
+  // Stickers have no caption and map to our 'image' content_type — same
+  // simplification the Meta path uses (parseMessageContent in
+  // src/app/api/whatsapp/webhook/route.ts: "stickers are images").
   const mediaKinds: Array<['image' | 'video' | 'audio' | 'document', string]> = [
     ['image', 'imageMessage'],
     ['video', 'videoMessage'],
     ['audio', 'audioMessage'],
     ['document', 'documentMessage'],
+    ['image', 'stickerMessage'],
   ]
   for (const [contentType, key] of mediaKinds) {
     const media = message[key] as { caption?: string } | undefined
     if (media) {
-      return { contentText: media.caption || `[${contentType}]`, contentType }
+      return { contentText: media.caption || null, contentType }
     }
   }
 
-  return { contentText: '[Unsupported message type]', contentType: 'text' }
+  return { contentText: '[Tipo de mensagem não suportado]', contentType: 'text' }
+}
+
+/**
+ * Downloads inbound media via Evolution's getBase64FromMediaMessage
+ * (see evolution-api.ts for the verified request/response shape) and
+ * re-uploads it to the account-scoped `chat-media` Storage bucket so
+ * the Inbox gets a stable, publicly-fetchable URL — Baileys media
+ * keys/URLs are short-lived and can't be linked to directly the way
+ * Meta's media proxy does. Best-effort: any failure (Evolution error,
+ * disallowed mimetype, storage error) is logged and swallowed so a
+ * media-download problem degrades to the existing caption/placeholder
+ * text rather than dropping the whole inbound message.
+ */
+async function downloadAndStoreEvolutionMedia(
+  accountId: string,
+  instanceName: string,
+  rawPayload: unknown,
+): Promise<string | null> {
+  try {
+    const media = await getBase64FromMediaMessage(instanceName, rawPayload)
+    const buffer = Buffer.from(media.base64, 'base64')
+    // Strip codec parameters (e.g. "audio/ogg; codecs=opus") — the
+    // chat-media bucket's allowed_mime_types check is an exact match
+    // against the base MIME type (migration 023_chat_media.sql).
+    const mimetype = media.mimetype?.split(';')[0]?.trim() || 'application/octet-stream'
+    const path = buildMediaPath(accountId, media.fileName || 'media')
+
+    const { error } = await supabaseAdmin()
+      .storage.from('chat-media')
+      .upload(path, buffer, { contentType: mimetype, upsert: true })
+    if (error) {
+      console.error('[evolution webhook] media upload failed:', error.message)
+      return null
+    }
+
+    const { data } = supabaseAdmin().storage.from('chat-media').getPublicUrl(path)
+    return data.publicUrl
+  } catch (err) {
+    console.error(
+      '[evolution webhook] media download failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return null
+  }
 }
 
 /**
@@ -255,6 +311,20 @@ async function handleMessagesUpsert(
   const { contentText, contentType } = parseEvolutionMessageContent(payload?.message)
   console.log('[evolution webhook][diag] parsed message content:', { contentType, contentText })
 
+  let mediaUrl: string | null = null
+  const mediaKey = payload?.message ? findMediaMessageKey(payload.message) : null
+  if (mediaKey) {
+    mediaUrl = await downloadAndStoreEvolutionMedia(
+      connection.account_id,
+      connection.external_id,
+      payload,
+    )
+    console.log('[evolution webhook][diag] media download result:', {
+      mediaKey,
+      success: !!mediaUrl,
+    })
+  }
+
   const timestampRaw = payload?.messageTimestamp
   const timestampSeconds = typeof timestampRaw === 'number'
     ? timestampRaw
@@ -284,6 +354,7 @@ async function handleMessagesUpsert(
       sender_type: 'customer',
       content_type: contentType,
       content_text: contentText,
+      media_url: mediaUrl,
       message_id: key.id,
       status: 'delivered',
       created_at: new Date(timestampSeconds * 1000).toISOString(),

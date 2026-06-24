@@ -10,6 +10,7 @@ export type TemplateSlug =
   | 'out_of_office'
   | 'lead_qualifier'
   | 'follow_up_reminder'
+  | 'new_contact_to_pipeline'
 
 export interface TemplateStepSeed {
   step_type: AutomationStepType
@@ -122,6 +123,28 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
           text:
             "Voltando aqui — você ainda tem alguma dúvida? Estamos à disposição para ajudar!",
         },
+      },
+    ],
+  },
+  // Closes the "contacts são criados mas o Pipeline fica vazio" gap —
+  // every new WhatsApp contact lands as a deal in the chosen pipeline
+  // stage. pipeline_id/stage_id are seeded empty (same convention as
+  // welcome_message's tag_id) — the user picks the real pipeline +
+  // stage in the builder before activating, since those ids are
+  // account-specific and a template can't know them in advance.
+  // Enabling/disabling this is just toggling the automation itself
+  // (is_active), reusing existing infra instead of a separate setting.
+  new_contact_to_pipeline: {
+    slug: 'new_contact_to_pipeline',
+    name: 'Criar negociação para novo contato',
+    description:
+      'Sempre que um contato novo chegar pelo WhatsApp, cria automaticamente uma negociação no funil e etapa escolhidos.',
+    trigger_type: 'new_contact_created',
+    trigger_config: {},
+    steps: [
+      {
+        step_type: 'create_deal',
+        step_config: { pipeline_id: '', stage_id: '', title: 'Novo lead', value: 0 },
       },
     ],
   },

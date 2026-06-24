@@ -94,6 +94,35 @@ export async function fetchConnectionState(instanceName: string): Promise<string
   return data?.instance?.state ?? 'unknown'
 }
 
+/**
+ * Inbound media download — POST /chat/getBase64FromMediaMessage/{instance}.
+ * Confirmed against the Evolution API source (EvolutionAPI/evolution-api,
+ * src/api/routes/chat.router.ts + chat.controller.ts +
+ * whatsapp.baileys.service.ts#getBase64FromMediaMessage, June 2026):
+ *   - body: { message: <full WAMessageInfo envelope (key + message)>, convertToMp4?: boolean }
+ *     `message` is exactly the shape of the `data` payload Evolution already
+ *     sends on the `messages.upsert` webhook event — no separate fetch needed.
+ *   - response: { mediaType, fileName, caption, size, mimetype, base64, buffer }
+ *     `buffer` is always null over REST; only `base64` carries the bytes.
+ */
+export interface EvolutionMediaResult {
+  mediaType: string
+  fileName: string
+  caption?: string
+  mimetype: string
+  base64: string
+}
+
+export async function getBase64FromMediaMessage(
+  instanceName: string,
+  message: unknown,
+): Promise<EvolutionMediaResult> {
+  return evolutionFetch(`/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: 'POST',
+    body: JSON.stringify({ message, convertToMp4: false }),
+  })
+}
+
 export async function sendTextMessage(
   instanceName: string,
   phone: string,
