@@ -397,6 +397,90 @@ function AgentSelect({
   )
 }
 
+/** Pipeline + stage dropdowns for "Create Deal": picking a pipeline
+ *  filters the stage list to that pipeline's stages and clears any
+ *  stage selection that no longer belongs to it. Falls back to raw id
+ *  inputs when the account has no pipelines yet (fresh account, or an
+ *  older deployment) so the step is always authorable. */
+function PipelineStageSelect({
+  pipelineId,
+  stageId,
+  onChange,
+}: {
+  pipelineId: string
+  stageId: string
+  onChange: (patch: { pipeline_id?: string; stage_id?: string }) => void
+}) {
+  const { pipelines, stages } = useResources()
+
+  if (pipelines.length === 0) {
+    return (
+      <>
+        <FieldBlock label="Funil">
+          <Input
+            placeholder="Id do funil"
+            value={pipelineId}
+            onChange={(e) => onChange({ pipeline_id: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+        <FieldBlock label="Etapa">
+          <Input
+            placeholder="Id da etapa"
+            value={stageId}
+            onChange={(e) => onChange({ stage_id: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      </>
+    )
+  }
+
+  const stagesForPipeline = stages.filter((s) => s.pipeline_id === pipelineId)
+  const selectedPipeline = pipelines.find((p) => p.id === pipelineId)
+  const selectedStage = stages.find((s) => s.id === stageId)
+
+  return (
+    <>
+      <FieldBlock label="Funil">
+        <select
+          value={pipelineId}
+          onChange={(e) => onChange({ pipeline_id: e.target.value, stage_id: "" })}
+          className={SELECT_CLASS}
+        >
+          <option value="">Selecione um funil…</option>
+          {pipelines.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+          {pipelineId && !selectedPipeline && (
+            <option value={pipelineId}>{pipelineId} (funil desconhecido)</option>
+          )}
+        </select>
+      </FieldBlock>
+      <FieldBlock label="Etapa">
+        <select
+          value={stageId}
+          onChange={(e) => onChange({ stage_id: e.target.value })}
+          disabled={!pipelineId}
+          className={SELECT_CLASS}
+        >
+          <option value="">Selecione uma etapa…</option>
+          {stagesForPipeline.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+          {stageId && !selectedStage && (
+            <option value={stageId}>{stageId} (etapa desconhecida)</option>
+          )}
+        </select>
+      </FieldBlock>
+    </>
+  )
+}
+
 /** Template dropdown showing approved templates by name + language,
  *  storing both template_name and language. Falls back to manual name +
  *  language inputs when no approved templates are synced yet. */
@@ -1128,20 +1212,11 @@ function StepEditor({
     case "create_deal":
       return (
         <>
-          <FieldBlock label="Id do funil">
-            <Input
-              value={(cfg.pipeline_id as string) ?? ""}
-              onChange={(e) => set({ pipeline_id: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
-          <FieldBlock label="Id da etapa">
-            <Input
-              value={(cfg.stage_id as string) ?? ""}
-              onChange={(e) => set({ stage_id: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
+          <PipelineStageSelect
+            pipelineId={(cfg.pipeline_id as string) ?? ""}
+            stageId={(cfg.stage_id as string) ?? ""}
+            onChange={(patch) => set(patch)}
+          />
           <FieldBlock label="Título">
             <Input
               value={(cfg.title as string) ?? ""}
