@@ -5,6 +5,7 @@ import { isUniqueViolation } from '@/lib/contacts/dedupe'
 import { buildMediaPath } from '@/lib/storage/upload-media'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { buildLastMessagePreview } from './message-preview'
 
 // Handles the three Evolution webhook events needed for
 // "QR Code -> Conexão -> Conversas -> Inbox" (Fase 3 plan):
@@ -375,7 +376,7 @@ async function handleMessagesUpsert(
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: contentText || `[${contentType}]`,
+      last_message_text: buildLastMessagePreview(contentType, contentText),
       last_message_at: new Date().toISOString(),
       unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),

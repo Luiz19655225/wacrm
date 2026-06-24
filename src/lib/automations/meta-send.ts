@@ -7,9 +7,11 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
+import { getChannelAdapter } from '@/lib/channels/registry'
+import type { AccountConnection } from '@/types'
 
 // ------------------------------------------------------------
-// Automation-side Meta sender.
+// Automation-side sender.
 //
 // Mirrors the logic in src/app/api/whatsapp/send/route.ts but uses
 // the service-role client (engine has no cookies) and accepts the
@@ -17,6 +19,15 @@ import { supabaseAdmin } from './admin-client'
 // on hand. Kept here (rather than refactoring the user-facing send
 // route) to avoid risk to the working manual-send path — they can
 // converge in a later refactor.
+//
+// `engineSendText` branches on the conversation's connection_id, same
+// as the manual send route: NULL means Meta (the only provider when
+// this file was first written), a real account_connections id means
+// Evolution. Without this branch, every automation send_message step
+// failed on Evolution-only accounts with "WhatsApp not configured"
+// (whatsapp_config is Meta-only and was never populated for them).
+// engineSendTemplate stays Meta-only — Evolution/Baileys has no
+// template concept, same restriction the manual route enforces.
 // ------------------------------------------------------------
 
 interface SendTextArgs {
@@ -44,7 +55,78 @@ interface SendTemplateArgs {
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
+  const db = supabaseAdmin()
+  const { data: conversation } = await db
+    .from('conversations')
+    .select('connection_id')
+    .eq('id', args.conversationId)
+    .maybeSingle()
+
+  if (conversation?.connection_id) {
+    return sendViaEvolution(args, conversation.connection_id as string)
+  }
   return sendViaMeta({ ...args, kind: 'text' })
+}
+
+async function sendViaEvolution(
+  args: SendTextArgs,
+  connectionId: string,
+): Promise<{ whatsapp_message_id: string }> {
+  const db = supabaseAdmin()
+
+  const { data: contact, error: contactErr } = await db
+    .from('contacts')
+    .select('id, phone')
+    .eq('id', args.contactId)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+  if (contactErr || !contact?.phone) {
+    throw new Error('contact not found for this account')
+  }
+
+  const { data: connection, error: connError } = await db
+    .from('account_connections')
+    .select('id, account_id, external_id, provider, connection_status')
+    .eq('id', connectionId)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+  if (connError || !connection || connection.provider !== 'EVOLUTION' || !connection.external_id) {
+    throw new Error('Evolution connection not found')
+  }
+  if (connection.connection_status !== 'connected') {
+    throw new Error('WhatsApp connection is not connected yet')
+  }
+
+  const phone = contact.phone.replace(/\D/g, '')
+  const result = await getChannelAdapter('EVOLUTION').sendMessage({
+    connection: connection as unknown as AccountConnection,
+    to: phone,
+    text: args.text,
+  })
+  const waMessageId = result.externalMessageId
+
+  const { error: msgErr } = await db.from('messages').insert({
+    conversation_id: args.conversationId,
+    sender_type: 'bot',
+    content_type: 'text',
+    content_text: args.text,
+    message_id: waMessageId || null,
+    status: 'sent',
+  })
+  if (msgErr) {
+    throw new Error(`sent via Evolution but DB insert failed: ${msgErr.message}`)
+  }
+
+  await db
+    .from('conversations')
+    .update({
+      last_message_text: args.text,
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', args.conversationId)
+
+  return { whatsapp_message_id: waMessageId }
 }
 
 export async function engineSendTemplate(

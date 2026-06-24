@@ -7,6 +7,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { supabaseAdmin } from '@/lib/whatsapp/admin-client'
 import { findOrCreateContact, findOrCreateConversation } from '@/lib/whatsapp/conversation-pipeline'
+import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -611,7 +612,7 @@ async function processMessage(
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: contentText || `[${message.type}]`,
+      last_message_text: buildLastMessagePreview(contentType, contentText),
       last_message_at: new Date().toISOString(),
       unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),

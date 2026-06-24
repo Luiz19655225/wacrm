@@ -23,6 +23,7 @@ import {
 } from '@/lib/rate-limit'
 import type { MessageTemplate } from '@/types'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
 
 export async function POST(request: Request) {
   try {
@@ -414,7 +415,7 @@ export async function POST(request: Request) {
     await supabase
       .from('conversations')
       .update({
-        last_message_text: content_text || `[${message_type}]`,
+        last_message_text: buildLastMessagePreview(message_type, content_text),
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -588,7 +589,7 @@ async function sendViaEvolution(args: {
   await supabase
     .from('conversations')
     .update({
-      last_message_text: contentText || `[${messageType}]`,
+      last_message_text: buildLastMessagePreview(messageType, contentText),
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

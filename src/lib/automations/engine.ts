@@ -354,7 +354,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         contactId: args.contactId,
         text,
       })
-      return `sent via Meta (${whatsapp_message_id})`
+      return `mensagem enviada (${whatsapp_message_id})`
     }
 
     case 'send_template': {

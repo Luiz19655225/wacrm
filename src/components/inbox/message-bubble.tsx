@@ -116,6 +116,27 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
+function MediaVideo({ url }: { url: string }) {
+  const [error, setError] = useState(false);
+  if (error) return <MediaUnavailable label="Vídeo" />;
+  return (
+    <video
+      src={url}
+      controls
+      className="max-h-64 max-w-60 rounded-lg"
+      onError={() => setError(true)}
+    />
+  );
+}
+
+function MediaAudio({ url }: { url: string }) {
+  const [error, setError] = useState(false);
+  if (error) return <MediaUnavailable label="Áudio" />;
+  return (
+    <audio src={url} controls className="max-w-60" onError={() => setError(true)} />
+  );
+}
+
 function MessageContent({ message }: { message: Message }) {
   switch (message.content_type) {
     case "text":
@@ -145,11 +166,7 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
-            />
+            <MediaVideo url={message.media_url} />
           ) : (
             <MediaUnavailable label="Vídeo" />
           )}
@@ -165,7 +182,7 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <MediaAudio url={message.media_url} />
           ) : (
             <MediaUnavailable label="Áudio" />
           )}

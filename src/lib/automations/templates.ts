@@ -128,23 +128,36 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
   },
   // Closes the "contacts são criados mas o Pipeline fica vazio" gap —
   // every new WhatsApp contact lands as a deal in the chosen pipeline
-  // stage. pipeline_id/stage_id are seeded empty (same convention as
-  // welcome_message's tag_id) — the user picks the real pipeline +
-  // stage in the builder before activating, since those ids are
-  // account-specific and a template can't know them in advance.
+  // stage, AND gets an immediate welcome reply (the simplest possible
+  // proof that WAVON automates the first interaction). pipeline_id/
+  // stage_id are seeded empty (same convention as welcome_message's
+  // tag_id) — the user picks the real pipeline + stage in the builder
+  // before activating, since those ids are account-specific and a
+  // template can't know them in advance.
   // Enabling/disabling this is just toggling the automation itself
   // (is_active), reusing existing infra instead of a separate setting.
+  // Only one step_type per slug fires `send_message` on
+  // new_contact_created — pairing it with welcome_message (which fires
+  // on first_inbound_message instead) would double-send if both are
+  // active, so this is deliberately the one template that owns both
+  // actions rather than two templates layered together.
   new_contact_to_pipeline: {
     slug: 'new_contact_to_pipeline',
-    name: 'Criar negociação para novo contato',
+    name: 'Boas-vindas + negociação para novo contato',
     description:
-      'Sempre que um contato novo chegar pelo WhatsApp, cria automaticamente uma negociação no funil e etapa escolhidos.',
+      'Sempre que um contato novo chegar pelo WhatsApp, cria automaticamente uma negociação no funil escolhido e envia uma mensagem de boas-vindas.',
     trigger_type: 'new_contact_created',
     trigger_config: {},
     steps: [
       {
         step_type: 'create_deal',
         step_config: { pipeline_id: '', stage_id: '', title: 'Novo lead', value: 0 },
+      },
+      {
+        step_type: 'send_message',
+        step_config: {
+          text: 'Olá, tudo bem? Recebemos sua mensagem e já vamos te atender por aqui.',
+        },
       },
     ],
   },

@@ -5,6 +5,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   KeyboardEvent,
 } from "react";
 import {
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCan } from "@/hooks/use-can";
+import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -36,6 +39,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from "@/lib/storage/upload-media";
 import { ReplyQuote } from "./reply-quote";
+import type { QuickReply } from "@/types";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -161,6 +165,62 @@ export function MessageComposer({
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
+  // ---- Quick replies ("/shortcut" → canned text) ---------------------
+  const { accountId } = useAuth();
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("quick_replies")
+      .select("*")
+      .order("shortcut", { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch quick replies:", error);
+          return;
+        }
+        setQuickReplies((data as QuickReply[]) ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  // The composer shows the "/shortcut" picker only when the *entire*
+  // field is a bare slash command — typing past it (a space, more
+  // lines) is treated as the agent writing a literal message instead.
+  const slashMatch = /^\/([a-z0-9_-]*)$/i.exec(text);
+  const slashQuery = slashMatch?.[1]?.toLowerCase() ?? null;
+  const slashMatches = useMemo(
+    () =>
+      slashQuery !== null
+        ? quickReplies.filter((r) => r.shortcut.startsWith(slashQuery))
+        : [],
+    [slashQuery, quickReplies],
+  );
+  const slashOpen = slashQuery !== null && slashMatches.length > 0;
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashQuery]);
+
+  const selectQuickReply = useCallback((reply: QuickReply) => {
+    setText(reply.content);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
+
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
       clearInterval(timerRef.current);
@@ -207,12 +267,34 @@ export function MessageComposer({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (slashOpen) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashIndex((i) => (i + 1) % slashMatches.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          selectQuickReply(slashMatches[slashIndex]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setText("");
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend, slashOpen, slashMatches, slashIndex, selectQuickReply]
   );
 
   const handleChange = useCallback(
@@ -523,29 +605,60 @@ export function MessageComposer({
             <LayoutTemplate className="h-4 w-4" />
           </GatedButton>
 
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              readOnly
-                ? "Somente leitura — visualizadores podem ver mas não responder"
-                : sessionExpired
-                  ? "Sessão expirada - use um modelo"
-                  : "Digite uma mensagem... (Shift+Enter para nova linha)"
-            }
-            disabled={sessionExpired || readOnly}
-            rows={1}
-            // Textarea keeps its own inline title — the GatedButton
-            // wrapping pattern doesn't apply to non-button inputs.
-            // The placeholder text also surfaces the read-only state.
-            title={readOnly ? "Somente leitura — sua função não pode enviar mensagens" : undefined}
-            className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+          <div className="relative flex-1">
+            {slashOpen && (
+              <div className="absolute bottom-full left-0 mb-1.5 w-full max-w-xs overflow-hidden rounded-lg border border-border bg-popover shadow-md">
+                <ul className="max-h-48 overflow-y-auto py-1">
+                  {slashMatches.map((reply, i) => (
+                    <li key={reply.id}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          // mousedown (not click) so this fires before the
+                          // textarea's blur, which would otherwise close
+                          // the picker before the click registers.
+                          e.preventDefault();
+                          selectQuickReply(reply);
+                        }}
+                        className={cn(
+                          "flex w-full flex-col items-start gap-0.5 px-3 py-1.5 text-left",
+                          i === slashIndex ? "bg-muted" : "hover:bg-muted/60",
+                        )}
+                      >
+                        <span className="text-xs font-medium text-primary">/{reply.shortcut}</span>
+                        <span className="line-clamp-1 text-xs text-muted-foreground">
+                          {reply.content}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-          />
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                readOnly
+                  ? "Somente leitura — visualizadores podem ver mas não responder"
+                  : sessionExpired
+                    ? "Sessão expirada - use um modelo"
+                    : "Digite uma mensagem... (Shift+Enter para nova linha)"
+              }
+              disabled={sessionExpired || readOnly}
+              rows={1}
+              // Textarea keeps its own inline title — the GatedButton
+              // wrapping pattern doesn't apply to non-button inputs.
+              // The placeholder text also surfaces the read-only state.
+              title={readOnly ? "Somente leitura — sua função não pode enviar mensagens" : undefined}
+              className={cn(
+                "w-full resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
+                (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              )}
+            />
+          </div>
 
           <GatedButton
             size="sm"

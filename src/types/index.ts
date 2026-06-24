@@ -110,6 +110,16 @@ export interface Tag {
   created_at: string;
 }
 
+/** Canned text snippet triggered by "/shortcut" in the Inbox composer. */
+export interface QuickReply {
+  id: string;
+  account_id: string;
+  shortcut: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ContactTag {
   id: string;
   contact_id: string;
