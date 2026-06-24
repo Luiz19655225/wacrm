@@ -98,20 +98,31 @@ Infra no ar, inbound (recebimento) validado de ponta a ponta em produção real.
 - **Ainda não testado**: envio de mensagens do WAVON para o WhatsApp (outbound, `send/route.ts` → `sendViaEvolution`). Só o caminho de recebimento (inbound) foi validado nesta sessão.
 - **Typecheck e lint limpos** (`npm run typecheck`, `npm run build`) em todas as rodadas desta fase.
 
+## Fase 4 — MVP operacional (24/06/2026, parte 3)
+Continuação da Fase 3 fechada (mídia inbound + CRM automático + outbound, todos validados — ver "Marco mais recente" na memória do projeto). Comando do usuário: "Agora não mexer em infraestrutura crítica sem necessidade" — todas as mudanças desta rodada foram aditivas (1 tabela nova, nenhuma alteração em conexões/billing/DNS). Commit `0fd282a`, deploy `dpl_MvftFB3mW2otp9nbdwEizEMrCMnR`, publicado em `www.wavon.com.br`.
+
+1. **Tradução residual** — sweep completo do app além do `/pipelines` (que já estava 100% pt-BR em código; só os *dados* de 2 pipelines/stages antigos em inglês precisaram de UPDATE direto no banco, sem migration). Achado real: `/join/[token]` (página de aceitar convite de equipe) estava **inteira em inglês** — não fazia parte do sweep anterior porque vive fora do route group `(dashboard)`. Traduzida por completo (títulos, toasts, botões, modal de conflito de conta).
+2. **UX do Inbox** — auditoria confirmou que renderização de imagem/áudio/vídeo/documento, alinhamento, timestamps, auto-scroll, loading states e tratamento de erro de envio já estavam implementados e robustos (trabalho de rodadas anteriores). Dois gaps reais corrigidos:
+   - Preview da lista de conversas mostrava o `content_type` cru entre colchetes (`[image]`, `[video]`) quando a mídia não tinha legenda — corrigido com `src/lib/whatsapp/message-preview.ts` (rótulos amigáveis em pt-BR: "📷 Foto", "🎵 Áudio" etc.), aplicado nos 4 pontos que gravam `last_message_text` (webhook Meta, webhook Evolution, envio Meta, envio Evolution).
+   - Bolhas de vídeo/áudio no Inbox não tinham fallback visual quando a mídia falhava ao carregar (só a imagem tinha) — adicionado `onError` com o mesmo componente `MediaUnavailable`.
+3. **Respostas rápidas (nova funcionalidade)** — o composer do Inbox já mostrava a dica "Digite '/' para respostas rápidas" há tempo, mas a funcionalidade nunca existiu (não confundir com `message_templates`, que são templates HSM aprovados pela Meta e não funcionam em contas Evolution/Baileys). Implementado do zero: tabela `quick_replies` (migration `031_quick_replies.sql`, **ainda precisa ser aplicada manualmente no SQL Editor do Supabase** — mesma rotina das migrations 029/030), painel de gestão em Configurações → "Respostas rápidas" (`quick-replies-manager.tsx`, CRUD completo), e detecção de "/atalho" no campo de mensagem (`message-composer.tsx`) que sugere e insere o texto salvo — funciona com qualquer provedor de WhatsApp porque é texto puro enviado pelo fluxo normal de envio (não passa pelo sistema de templates Meta).
+4. **Automação comercial (achado crítico corrigido)** — durante a implementação, descoberto que o passo `send_message` do engine de automações (`src/lib/automations/meta-send.ts`) só sabia enviar via Meta (`whatsapp_config`), e a conta de teste é 100% Evolution — qualquer automação com esse passo falharia silenciosamente. Corrigido com despacho por `connection_id` da conversa (Meta quando `null`, Evolution quando preenchido), espelhando o padrão já usado em `/api/whatsapp/send`. Com o bug corrigido, a automação **"Boas-vindas + negociação para novo contato"** (já ativa em produção desde a Fase 3, criada a partir do template `new_contact_to_pipeline`) ganhou um segundo passo `send_message` com o texto de boas-vindas — fechando o fluxo completo pedido: contato novo → negociação criada no Pipeline → mensagem automática enviada → registrada no histórico (`messages`) → log da automação (`automation_logs`, já existia). Deliberado **não criar uma segunda automação** para isso: o engine roda *todas* as automações ativas que casam com um `trigger_type`, então duas automações com `new_contact_created` ativas ao mesmo tempo criariam 2 negociações duplicadas por contato novo.
+
+**Pendência imediata**: aplicar `supabase/migrations/031_quick_replies.sql` manualmente no SQL Editor do Supabase antes de usar "Respostas rápidas" em produção — sem a tabela, o painel de Configurações e o atalho "/" no Inbox não funcionam (erro de tabela inexistente).
+
+`npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` limpos nesta rodada.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fase 2 fechada, sem pendências bloqueantes.
+Fases 2 e 3 fechadas, sem pendências bloqueantes.
 
-Fase 3 (Evolution API) — ~95% concluída. Falta para fechar 100% (próxima sessão):
-1. Testar envio de mensagens do WAVON para o WhatsApp (outbound) e validar que chega no destinatário real.
-2. Tratar mídias inbound (imagem, áudio, vídeo, documento) — hoje só chegam como placeholder/`[Unsupported message type]`.
-3. Resolver "Image unavailable" no Inbox.
-4. Revisar UX do Inbox (achados visuais durante os testes desta sessão).
-5. Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` depois de confirmar estabilidade.
-6. Planejar a próxima fase (automações e IA) depois de Fase 3 fechada.
+Fase 4 (MVP operacional) — ver seção acima. Pendência imediata: aplicar a migration `031_quick_replies.sql` no Supabase (manual, SQL Editor).
 
-Pendência não-bloqueante: adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 acima) — não relacionada à Fase 3.
+Pendências não-bloqueantes:
+- Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
+- Adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 mais abaixo) — não relacionada à Fase 3/4.
+- Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

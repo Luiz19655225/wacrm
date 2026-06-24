@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useAuth } from '@/hooks/use-auth';
@@ -22,19 +22,47 @@ import {
   type SettingsSection,
 } from '@/components/settings/settings-sections';
 
+// `useSearchParams` opts the component out of static prerendering
+// unless it sits under a Suspense boundary (same pattern as
+// (auth)/login). Splitting it out also means the tab-switch bug fixed
+// above (panel staying on "Visão geral") can never come back as a
+// CSR-bailout/hydration timing issue tied to the missing boundary.
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageInner />
+    </Suspense>
+  );
+}
+
+function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { defaultCurrency } = useAuth();
   const { mode } = useTheme();
 
-  // The URL (`?tab=`) is the single source of truth for the active
-  // section — deep-linkable, and it keeps the existing links in the
-  // app sidebar/header working. Legacy tab values (tags, custom-fields)
-  // resolve onto their new home; unknown/empty → the Overview landing.
-  const section = resolveSection(searchParams.get('tab'));
+  // The active section lives in local state, NOT purely derived from
+  // `useSearchParams()` on every render. `/settings` prerenders as a
+  // static page (no Suspense boundary above it), and a click-driven
+  // `router.replace` that only changes the query string isn't
+  // guaranteed to re-resolve `useSearchParams()` synchronously for a
+  // static route in every case — switching tabs could silently no-op,
+  // leaving the Overview panel showing. Local state makes the click
+  // itself the source of truth for what's on screen; the URL is kept
+  // in sync afterwards purely for deep-linking (sharing a `?tab=`
+  // link, browser back/forward).
+  const [section, setSection] = useState<SettingsSection>(() =>
+    resolveSection(searchParams.get('tab')),
+  );
+
+  // Keeps the panel in sync when the URL changes from outside a rail
+  // click — direct link with `?tab=`, browser back/forward.
+  useEffect(() => {
+    setSection(resolveSection(searchParams.get('tab')));
+  }, [searchParams]);
 
   const go = (next: SettingsSection) => {
+    setSection(next);
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', next);
     router.replace(`/settings?${params.toString()}`, { scroll: false });
