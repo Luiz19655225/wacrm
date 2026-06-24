@@ -112,12 +112,26 @@ Continuação da Fase 3 fechada (mídia inbound + CRM automático + outbound, to
 
 `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` limpos nesta rodada.
 
+## Fase 5 — Assistente IA (OpenAI) + Atendente no site (24/06/2026)
+Implementação completa (Partes 1, 2, 3-fundação e 4). Regra central: **cada conta usa sua própria chave OpenAI** — não existe chave global do sistema. API usada: **Responses API** (`POST /v1/responses`), explicitamente não a Assistants API (legada). Cliente OpenAI escrito à mão via `fetch` (sem dependência `openai` no `package.json`, seguindo o padrão da casa de clientes manuais como `meta-api.ts`/`evolution-api.ts`).
+
+1. **Banco** — migration `supabase/migrations/032_ai_assistant.sql` (criada, **AINDA NÃO aplicada** — precisa ser rodada manualmente no SQL Editor do Supabase, mesma rotina das migrations 029/030/031): tabelas `ai_settings` (1 linha por conta, chave criptografada AES-256-GCM via `src/lib/whatsapp/encryption.ts` reaproveitado, modelo padrão, status de conexão, colunas reservadas não-aplicadas ainda `monthly_token_limit`/`auto_reply_enabled`/`business_hours_only` para uma fase futura de IA automática) e `ai_usage_logs` (log de cada chamada à IA: feature, tokens, status, erro). `account_connections` ganhou `'SITE_WIDGET'` como `connection_type`/`provider` válido (constraint ampliada, aditiva).
+2. **Configuração da IA** — Configurações → "IA / OpenAI" (`src/components/settings/ai-settings-panel.tsx`): salvar/testar/remover chave (mascarada como `sk-...abcd`, nunca exposta de volta ao navegador), escolher modelo (`gpt-4o-mini` padrão, `gpt-4o`, `gpt-4.1-mini`, `gpt-4.1`), prompt customizado opcional. Validação da chave acontece **antes** de salvar (`GET /v1/models`, barato — não gasta tokens de geração).
+3. **Assistente IA no Inbox** — 3 botões no cabeçalho da conversa (`message-thread.tsx`): "✨ Sugerir resposta" (preenche o campo de mensagem, **nunca envia automaticamente** — humano revisa e clica enviar), "✨ Resumir" e "🔥 Classificar lead" (Frio/Morno/Quente/Cliente/Perdido + motivo), ambos em um diálogo somente leitura. Rotas: `/api/ai/inbox/{suggest-reply,summarize,classify-lead}`. Falha de IA nunca quebra o Inbox — sempre cai num erro tratado, sem exceção não capturada.
+4. **Atendente IA no site público** — widget flutuante (`src/components/site-widget/chat-widget.tsx`, montado globalmente em `layout.tsx`, autoesconde nas rotas autenticadas/dashboard). Primeira mensagem coleta nome+WhatsApp+mensagem → `POST /api/public/site-widget/message` (sem autenticação) cria contato/conversa (origem identificada via `account_connections` tipo `SITE_WIDGET`, `is_primary=false`, reaproveitando `conversations.connection_id` — nenhuma coluna nova de "origem") → reaproveita o engine de automações existente (`runAutomationsForTrigger`) para criar a negociação no Pipeline automaticamente, sem código duplicado de criação de deal → IA responde no widget → tudo aparece no Inbox normal do WAVON. Exige a env var `SITE_WIDGET_ACCOUNT_ID` (conta "dona" do site — não é produto multi-tenant embeddable, é o site institucional da própria WAVON).
+5. **Segurança**: chave OpenAI nunca chega ao navegador (só rotas server-side com client de service-role); toda chamada de IA é logada em `ai_usage_logs`; rate limit simples no widget público (30 mensagens/hora por conversa); autenticação leve de follow-up no widget (telefone enviado precisa bater com o da conversa).
+6. **Não testado nesta rodada** (sem chave OpenAI real disponível no ambiente de implementação): chamada real à API da OpenAI, uso do widget em navegador real, e a migration `032` em si. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos (todas as rotas novas registradas corretamente).
+
+**Pendência imediata**: aplicar `supabase/migrations/032_ai_assistant.sql` manualmente no SQL Editor do Supabase, e configurar a env var `SITE_WIDGET_ACCOUNT_ID` na Vercel (produção) — sem isso, Parte 1/2 não funcionam (tabela inexistente) e o widget do site responde 503.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
 Fases 2 e 3 fechadas, sem pendências bloqueantes.
 
 Fase 4 (MVP operacional) — ver seção acima. Pendência imediata: aplicar a migration `031_quick_replies.sql` no Supabase (manual, SQL Editor).
+
+Fase 5 (Assistente IA + Atendente no site) — ver seção acima. Pendências imediatas: aplicar a migration `032_ai_assistant.sql` no Supabase (manual, SQL Editor) e configurar `SITE_WIDGET_ACCOUNT_ID` na Vercel. Sem chave OpenAI real configurada por conta em Configurações → "IA / OpenAI", nenhum recurso de IA funciona (esperado — é por design, cada conta usa sua própria chave).
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.

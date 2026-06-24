@@ -102,6 +102,15 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /**
+   * AI-suggested reply text to drop into the field — never sent
+   * automatically, the agent still has to review and click Send.
+   * Paired with `prefillToken`: the composer watches the TOKEN (not
+   * the string), so suggesting the exact same text twice in a row
+   * still re-applies it instead of being a no-op react dep check.
+   */
+  prefillText?: string;
+  prefillToken?: number;
 }
 
 function formatDuration(seconds: number): string {
@@ -123,6 +132,8 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  prefillText,
+  prefillToken,
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -209,8 +220,10 @@ export function MessageComposer({
     setSlashIndex(0);
   }, [slashQuery]);
 
-  const selectQuickReply = useCallback((reply: QuickReply) => {
-    setText(reply.content);
+  // Shared by quick replies and the AI "Sugerir resposta" prefill —
+  // sets the field, resizes it, and parks the cursor at the end.
+  const setComposerText = useCallback((value: string) => {
+    setText(value);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -220,6 +233,22 @@ export function MessageComposer({
       el.setSelectionRange(el.value.length, el.value.length);
     });
   }, []);
+
+  const selectQuickReply = useCallback(
+    (reply: QuickReply) => setComposerText(reply.content),
+    [setComposerText],
+  );
+
+  // AI-suggested reply arriving from the thread header's "Sugerir
+  // resposta" button. Watches the TOKEN, not the text, so suggesting
+  // the same string twice in a row still re-applies it (a plain
+  // string dependency would no-op on the second identical suggestion).
+  const prefillAppliedRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (prefillToken === undefined || prefillToken === prefillAppliedRef.current) return;
+    prefillAppliedRef.current = prefillToken;
+    if (prefillText) setComposerText(prefillText);
+  }, [prefillToken, prefillText, setComposerText]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {

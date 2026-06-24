@@ -23,6 +23,10 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Sparkles,
+  FileSearch,
+  Flame,
+  Loader2,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -34,6 +38,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
@@ -46,6 +57,7 @@ import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
+import type { ConversationSummary, LeadClassificationResult } from "@/lib/ai/inbox-assistant";
 
 interface ReplyDraft {
   id: string;
@@ -192,6 +204,21 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+
+  // ---- AI assistant (Sugerir resposta / Resumir / Classificar lead) --
+  // `aiSuggestion` + `aiSuggestionToken` push a generated reply into the
+  // composer's text field without sending it — the human still has to
+  // review and click Send. The token (not just the string) is what the
+  // composer watches, so suggesting the exact same text twice in a row
+  // still re-applies it.
+  const [aiLoading, setAiLoading] = useState<"suggest" | "summary" | "classify" | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const [aiSuggestionToken, setAiSuggestionToken] = useState(0);
+  const [aiPanel, setAiPanel] = useState<
+    | { type: "summary"; data: ConversationSummary }
+    | { type: "classify"; data: LeadClassificationResult }
+    | null
+  >(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -775,6 +802,77 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  const handleAiSuggestReply = useCallback(async () => {
+    if (!conversation || aiLoading) return;
+    setAiLoading("suggest");
+    try {
+      const res = await fetch("/api/ai/inbox/suggest-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversation.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        toast.error(data.error || "Falha ao gerar sugestão de resposta");
+        return;
+      }
+      setAiSuggestion(data.suggestion || "");
+      setAiSuggestionToken((t) => t + 1);
+      toast.success("Sugestão inserida — revise antes de enviar");
+    } catch (err) {
+      console.error("AI suggest-reply failed:", err);
+      toast.error("Falha ao gerar sugestão de resposta");
+    } finally {
+      setAiLoading(null);
+    }
+  }, [conversation, aiLoading]);
+
+  const handleAiSummarize = useCallback(async () => {
+    if (!conversation || aiLoading) return;
+    setAiLoading("summary");
+    try {
+      const res = await fetch("/api/ai/inbox/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversation.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        toast.error(data.error || "Falha ao gerar resumo");
+        return;
+      }
+      setAiPanel({ type: "summary", data: data.summary as ConversationSummary });
+    } catch (err) {
+      console.error("AI summarize failed:", err);
+      toast.error("Falha ao gerar resumo");
+    } finally {
+      setAiLoading(null);
+    }
+  }, [conversation, aiLoading]);
+
+  const handleAiClassifyLead = useCallback(async () => {
+    if (!conversation || aiLoading) return;
+    setAiLoading("classify");
+    try {
+      const res = await fetch("/api/ai/inbox/classify-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversation.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        toast.error(data.error || "Falha ao classificar o lead");
+        return;
+      }
+      setAiPanel({ type: "classify", data: data.classification as LeadClassificationResult });
+    } catch (err) {
+      console.error("AI classify-lead failed:", err);
+      toast.error("Falha ao classificar o lead");
+    } finally {
+      setAiLoading(null);
+    }
+  }, [conversation, aiLoading]);
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -879,6 +977,54 @@ export function MessageThread({
               )}
             </button>
           )}
+
+          {/* AI assistant — suggest/summarize/classify. Each button
+              shows its own spinner via `aiLoading` so clicking one
+              doesn't visually freeze the other two. Suggestion text
+              flows into the composer (never auto-sent); summary and
+              classification open a read-only dialog below. */}
+          <button
+            type="button"
+            onClick={handleAiSuggestReply}
+            disabled={aiLoading !== null}
+            title="Sugerir resposta com IA"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            {aiLoading === "suggest" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">Sugerir resposta</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleAiSummarize}
+            disabled={aiLoading !== null}
+            title="Resumir conversa com IA"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            {aiLoading === "summary" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileSearch className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">Resumir</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleAiClassifyLead}
+            disabled={aiLoading !== null}
+            title="Classificar lead com IA"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            {aiLoading === "classify" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Flame className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">Classificar lead</span>
+          </button>
 
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
@@ -1066,7 +1212,90 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        prefillText={aiSuggestion}
+        prefillToken={aiSuggestionToken}
       />
+
+      {/* AI summary / lead classification — read-only, the agent just
+          closes it and decides what to do; nothing here is persisted. */}
+      <Dialog open={aiPanel !== null} onOpenChange={(open) => !open && setAiPanel(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {aiPanel?.type === "summary" ? (
+                <>
+                  <FileSearch className="h-4 w-4 text-primary" />
+                  Resumo da conversa
+                </>
+              ) : (
+                <>
+                  <Flame className="h-4 w-4 text-primary" />
+                  Classificação do lead
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>Gerado por IA — confira antes de agir.</DialogDescription>
+          </DialogHeader>
+
+          {aiPanel?.type === "summary" && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Intenção do cliente
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                  {aiPanel.data.intent || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Pontos principais
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                  {aiPanel.data.keyPoints || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Pendência atual
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                  {aiPanel.data.pending || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Próxima ação sugerida
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                  {aiPanel.data.nextAction || "—"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {aiPanel?.type === "classify" && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Classificação
+                </p>
+                <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2.5 py-1 text-sm font-medium text-primary">
+                  {aiPanel.data.classification}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Motivo
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                  {aiPanel.data.reason || "—"}
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <TemplatePicker
         open={templateModalOpen}
