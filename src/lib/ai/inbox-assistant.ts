@@ -1,5 +1,6 @@
 import { createOpenAIResponse } from './openai-client'
 import { getAccountAiSettings, logAiUsage } from './ai-settings'
+import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from './knowledge-base'
 
 // ------------------------------------------------------------
 // Inbox AI features: suggest reply, summarize, classify lead.
@@ -26,14 +27,20 @@ function buildTranscript(messages: TranscriptMessage[], contactName?: string | n
     .join('\n')
 }
 
-function baseInstructions(customSystemPrompt: string | null): string {
+// Order matches the product spec: Perfil + Produtos + FAQ + Objetivos
+// + Regras (the knowledge base) before the free-form customSystemPrompt,
+// before the task-specific instructions each caller appends. The
+// conversation transcript itself (Histórico) is passed separately as
+// `input`, always last.
+function baseInstructions(customSystemPrompt: string | null, knowledgeBlock: string): string {
   return [
     'Você é um assistente de atendimento ao cliente via WhatsApp para uma empresa brasileira que usa o CRM WAVON.',
     'Responda sempre em português do Brasil, de forma natural, cordial e objetiva.',
+    knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
     customSystemPrompt ? `Instruções específicas desta empresa: ${customSystemPrompt}` : null,
   ]
     .filter(Boolean)
-    .join('\n')
+    .join('\n\n')
 }
 
 interface AssistantArgs {
@@ -54,8 +61,9 @@ export async function suggestReply(
   const settings = await getAccountAiSettings(args.accountId)
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
+  const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
   const transcript = buildTranscript(args.messages, args.contactName)
-  const instructions = `${baseInstructions(settings.customSystemPrompt)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
 
   try {
     const result = await createOpenAIResponse({
@@ -117,10 +125,11 @@ export async function summarizeConversation(
   const settings = await getAccountAiSettings(args.accountId)
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
+  const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
   const transcript = buildTranscript(args.messages, args.contactName)
   if (!transcript) return { ok: false, error: 'Esta conversa ainda não tem mensagens para resumir.' }
 
-  const instructions = `${baseInstructions(settings.customSystemPrompt)}\n\nSua tarefa: resumir a conversa abaixo para um atendente que vai assumi-la agora. Responda EXATAMENTE neste formato, com cada rótulo em sua própria linha:\nIntenção do cliente: <texto>\nPontos principais: <texto>\nPendência atual: <texto>\nPróxima ação sugerida: <texto>`
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock)}\n\nSua tarefa: resumir a conversa abaixo para um atendente que vai assumi-la agora. Responda EXATAMENTE neste formato, com cada rótulo em sua própria linha:\nIntenção do cliente: <texto>\nPontos principais: <texto>\nPendência atual: <texto>\nPróxima ação sugerida: <texto>`
 
   try {
     const result = await createOpenAIResponse({
@@ -181,10 +190,11 @@ export async function classifyLead(
   const settings = await getAccountAiSettings(args.accountId)
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
+  const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
   const transcript = buildTranscript(args.messages, args.contactName)
   if (!transcript) return { ok: false, error: 'Esta conversa ainda não tem mensagens para classificar.' }
 
-  const instructions = `${baseInstructions(settings.customSystemPrompt)}\n\nSua tarefa: classificar este lead com base na conversa abaixo, usando EXATAMENTE uma destas categorias: Frio, Morno, Quente, Cliente, Perdido.\nResponda EXATAMENTE neste formato:\nClassificação: <categoria>\nMotivo: <explicação breve>`
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock)}\n\nSua tarefa: classificar este lead com base na conversa abaixo, usando EXATAMENTE uma destas categorias: Frio, Morno, Quente, Cliente, Perdido.\nResponda EXATAMENTE neste formato:\nClassificação: <categoria>\nMotivo: <explicação breve>`
 
   try {
     const result = await createOpenAIResponse({

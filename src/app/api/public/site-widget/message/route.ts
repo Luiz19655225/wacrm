@@ -8,6 +8,7 @@ import {
 import { findOrCreateContact, findOrCreateConversation } from '@/lib/whatsapp/conversation-pipeline'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { getAccountAiSettings, logAiUsage } from '@/lib/ai/ai-settings'
+import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from '@/lib/ai/knowledge-base'
 import { createOpenAIResponse } from '@/lib/ai/openai-client'
 import { normalizePhone, isValidE164 } from '@/lib/whatsapp/phone-utils'
 import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
@@ -210,16 +211,19 @@ export async function POST(request: Request) {
         })
         .join('\n')
 
+      const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(ownerAccountId))
+
       const instructions = [
         'Você é o atendente virtual no site público de uma empresa que usa o CRM WAVON.',
         'Um visitante está conversando com você pelo widget de chat do site. Responda em português do Brasil, de forma simpática, breve e profissional.',
         'Se a pergunta exigir um humano, diga que a equipe vai continuar o atendimento pelo WhatsApp informado.',
+        knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
         aiSettings.customSystemPrompt
           ? `Instruções específicas desta empresa: ${aiSettings.customSystemPrompt}`
           : null,
       ]
         .filter(Boolean)
-        .join('\n')
+        .join('\n\n')
 
       try {
         const result = await createOpenAIResponse({

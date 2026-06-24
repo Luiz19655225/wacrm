@@ -124,6 +124,24 @@ Implementação completa (Partes 1, 2, 3-fundação e 4). Regra central: **cada 
 
 **Pendência imediata**: aplicar `supabase/migrations/032_ai_assistant.sql` manualmente no SQL Editor do Supabase, e configurar a env var `SITE_WIDGET_ACCOUNT_ID` na Vercel (produção) — sem isso, Parte 1/2 não funcionam (tabela inexistente) e o widget do site responde 503.
 
+`supabase/migrations/032_ai_assistant.sql` foi aplicada manualmente pelo usuário no SQL Editor do Supabase e `SITE_WIDGET_ACCOUNT_ID` (`772a66f6-d7ed-4d6e-89cd-368f5e90912c`, confirmado via consulta direta ao banco) foi configurada na Vercel — ver Fase 6 abaixo para o estado seguinte.
+
+## Fase 6 — IA treinável por empresa (24/06/2026)
+Transforma a IA de "só conectada à OpenAI" em uma IA com base de conhecimento própria por conta — 5 novas seções alimentam automaticamente todo prompt enviado à OpenAI (Inbox + widget do site), na ordem: **Perfil + Produtos + FAQ + Objetivos + Regras + Histórico**.
+
+1. **Banco** — migration `supabase/migrations/033_ai_knowledge_base.sql` (criada, **ainda não aplicada** — mesma rotina manual no SQL Editor do Supabase): 5 tabelas novas, todas `account_id` + RLS via `is_account_member()` (leitura: qualquer membro; escrita: `admin`, mesmo nível de sensibilidade do `ai_settings` da Fase 5, pois moldam o que a IA diz em nome da empresa toda):
+   - `ai_company_profile` (1 linha por conta): nome, segmento, descrição, público-alvo, tom de voz, diferenciais.
+   - `ai_products` (várias linhas): nome, descrição, preço (texto livre).
+   - `ai_faqs` (várias linhas): pergunta + resposta.
+   - `ai_business_goals` (1 linha por conta): objetivo principal, objetivos secundários, como medir sucesso.
+   - `ai_rules` (1 linha por conta): sempre, nunca, quando transferir para um humano.
+2. **Montagem do prompt** — `src/lib/ai/knowledge-base.ts` (novo): `getAccountKnowledgeBase()` busca as 5 tabelas em paralelo (nunca lança erro — uma falha em qualquer peça degrada para vazio, não quebra a chamada de IA); `buildKnowledgeBasePromptBlock()` formata em pt-BR, omitindo seções sem conteúdo. Consumida em `src/lib/ai/inbox-assistant.ts` (sugerir resposta / resumir / classificar lead) e em `src/app/api/public/site-widget/message/route.ts` (atendente do site) — ambas já existiam da Fase 5 e só ganharam mais um bloco nas instruções, sem mudar a arquitetura.
+3. **Interface** — Configurações → "IA" deixou de ser um único card e ganhou sub-abas (`src/components/settings/ai-section.tsx`, usando o componente `Tabs` do base-ui já existente no projeto): OpenAI (painel da Fase 5, inalterado), Perfil da Empresa, Produtos, FAQ, Objetivos, Regras. Perfil/Objetivos/Regras são formulários de 1 linha por conta (upsert direto via client Supabase, RLS cuida do controle de acesso — mesmo padrão do `ai_settings`); Produtos/FAQ são listas com CRUD completo (criar/editar/excluir via diálogo), espelhando exatamente o padrão já usado em "Respostas rápidas" (`quick-replies-manager.tsx`).
+4. **Sem rota de API nova** — diferente da Fase 5 (que precisou de rotas server-side para criptografar a chave OpenAI), as 5 tabelas desta fase não guardam segredo nenhum, então o CRUD é direto do componente para o Supabase (client do usuário, RLS aplica o controle), seguindo a mesma escolha de arquitetura de `quick_replies`.
+5. **Não testado nesta rodada** (mesma limitação da Fase 5 — sem chave OpenAI real disponível no ambiente de implementação): não foi possível confirmar visualmente que o conteúdo de cada seção realmente aparece formatado na resposta da IA. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos.
+
+**Pendência imediata**: aplicar `supabase/migrations/033_ai_knowledge_base.sql` manualmente no SQL Editor do Supabase — sem ela, as 5 novas abas de Configurações → IA (Perfil/Produtos/FAQ/Objetivos/Regras) dão erro de tabela inexistente.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
@@ -131,7 +149,9 @@ Fases 2 e 3 fechadas, sem pendências bloqueantes.
 
 Fase 4 (MVP operacional) — ver seção acima. Pendência imediata: aplicar a migration `031_quick_replies.sql` no Supabase (manual, SQL Editor).
 
-Fase 5 (Assistente IA + Atendente no site) — ver seção acima. Pendências imediatas: aplicar a migration `032_ai_assistant.sql` no Supabase (manual, SQL Editor) e configurar `SITE_WIDGET_ACCOUNT_ID` na Vercel. Sem chave OpenAI real configurada por conta em Configurações → "IA / OpenAI", nenhum recurso de IA funciona (esperado — é por design, cada conta usa sua própria chave).
+Fase 5 (Assistente IA + Atendente no site) — concluída: migration `032` aplicada e `SITE_WIDGET_ACCOUNT_ID` configurada na Vercel. Sem chave OpenAI real configurada por conta em Configurações → IA → "OpenAI", nenhum recurso de IA funciona (esperado — é por design, cada conta usa sua própria chave).
+
+Fase 6 (IA treinável por empresa) — ver seção acima. Pendência imediata: aplicar a migration `033_ai_knowledge_base.sql` no Supabase (manual, SQL Editor).
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.

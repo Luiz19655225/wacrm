@@ -120,6 +120,27 @@ export interface QuickReply {
   updated_at: string;
 }
 
+/** Fase 6 — AI knowledge base: product/service the AI can mention. */
+export interface AiProduct {
+  id: string;
+  account_id: string;
+  name: string;
+  description: string | null;
+  price_info: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Fase 6 — AI knowledge base: a frequently asked question + answer. */
+export interface AiFaq {
+  id: string;
+  account_id: string;
+  question: string;
+  answer: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ContactTag {
   id: string;
   contact_id: string;
