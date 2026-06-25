@@ -10,12 +10,25 @@ import type { SupportedFileType } from './types'
 // library at all.
 // ------------------------------------------------------------
 
-export async function extractText(buffer: Buffer, fileType: SupportedFileType): Promise<string> {
+export interface ExtractTextResult {
+  text: string
+  charCount: number
+  /** Only populated when the source format's AST exposes it (PDF/DOCX); null otherwise. */
+  pageCount: number | null
+}
+
+export async function extractText(
+  buffer: Buffer,
+  fileType: SupportedFileType,
+): Promise<ExtractTextResult> {
   if (fileType === 'txt') {
-    return buffer.toString('utf-8')
+    const text = buffer.toString('utf-8')
+    return { text, charCount: text.length, pageCount: null }
   }
 
   const ast = await parseOffice(buffer, { fileType })
   const { value } = await ast.to('text')
-  return typeof value === 'string' ? value : ''
+  const text = typeof value === 'string' ? value : ''
+  const pageCount = typeof ast.metadata?.pages === 'number' ? ast.metadata.pages : null
+  return { text, charCount: text.length, pageCount }
 }

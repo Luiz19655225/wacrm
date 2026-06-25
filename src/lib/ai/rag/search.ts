@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { logAiUsage } from '@/lib/ai/ai-settings'
 import { generateEmbeddings } from './embeddings'
+import { logRagEvent } from './logger'
 import type { RelevantChunk } from './types'
 
 // ------------------------------------------------------------
@@ -30,8 +32,10 @@ export async function searchRelevantChunks(
   const trimmedQuery = queryText.trim()
   if (!trimmedQuery) return []
 
+  const startedAt = Date.now()
   try {
-    const [queryEmbedding] = await generateEmbeddings(apiKey, [trimmedQuery])
+    const { embeddings } = await generateEmbeddings(apiKey, [trimmedQuery])
+    const [queryEmbedding] = embeddings
     if (!queryEmbedding) return []
 
     const { data, error } = await supabaseAdmin().rpc('match_ai_document_chunks', {
@@ -49,9 +53,26 @@ export async function searchRelevantChunks(
       results.push({ documentId: row.document_id, content: row.content, similarity: row.similarity })
       totalChars += row.content.length
     }
+
+    const durationMs = Date.now() - startedAt
+    logRagEvent('search.completed', { accountId, durationMs, chunksReturned: results.length })
+    // This is exactly the gap found during Fase 7's production
+    // validation: without this row, there was no way to confirm from
+    // logs/DB whether RAG search ran at all for a given reply.
+    await logAiUsage({ accountId, feature: 'rag_search', durationMs, status: 'success' })
+
     return results
   } catch (err) {
+    const durationMs = Date.now() - startedAt
     console.error('[rag] searchRelevantChunks failed (degrading to no documents):', err)
+    logRagEvent('document.error', { accountId, stage: 'search', message: err instanceof Error ? err.message : String(err) })
+    await logAiUsage({
+      accountId,
+      feature: 'rag_search',
+      durationMs,
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Falha na busca RAG',
+    })
     return []
   }
 }

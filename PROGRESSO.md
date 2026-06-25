@@ -63,8 +63,23 @@ Pendências não-bloqueantes:
 - [x] **Teste real end-to-end em produção**: documento TXT com fato exclusivo ("código secreto do WAVON é 987654") → upload → status `ready` → pergunta no Widget → IA respondeu corretamente citando o documento
 - [x] Bug encontrado e corrigido durante a validação: 403 falso-positivo na 2ª mensagem de uma conversa do Widget (checagem de identidade usava comparação estrita de telefone, inconsistente com a comparação tolerante usada para resolver o contato) — corrigido com `phonesMatch`, mesma função já usada no resto do projeto
 
+## Fase 7.1 — Estabilização do RAG
+✅ Implementada (commit pendente) — migration `035` ainda **não aplicada** em produção
+
+- [x] Migration `035_ai_rag_observability.sql` (aditiva): novos status transitórios (`extracting`/`embedding`/`indexing`), metadados (`char_count`, `page_count`, `embedding_model`, `embedding_tokens`, `processing_duration_ms`, `content_hash`), `ai_usage_logs` ganha `rag_document_ingest`/`rag_search` + `duration_ms`
+- [x] Progresso real sem fila: upload responde rápido (status `extracting`) e continua via `after()` do Next.js (verificado seguro neste ambiente Vercel/Fluid Compute antes de implementar); UI faz polling a ~1s só durante estados transitórios, parando imediatamente em `ready`/`error`
+- [x] Duplicidade detectada por hash SHA-256, mas nunca bloqueada pelo sistema — `409` + diálogo "usar existente" ou "enviar mesmo assim" (`force: true`), decisão sempre da empresa
+- [x] Observabilidade: `logRagEvent` (JSON estruturado, greppável no `vercel logs`) em cada etapa da pipeline + busca; `ai_usage_logs` agora registra `rag_document_ingest`/`rag_search` com duração — resolve a lacuna encontrada na validação da Fase 7 ("não dava pra confirmar pelos logs se o RAG rodou")
+- [x] Mensagens de erro específicas por causa (extração, embeddings — com distinção de falha temporária 429/5xx vs. permanente, indexação)
+- [x] Metadados do documento exibidos na UI (tamanho, data, páginas, caracteres, chunks, modelo de embedding) sem consultas extras
+- [x] Exclusão verificada (confirma remoção do Storage antes de remover a linha, loga resultado)
+- [x] Performance revisada (chunking e busca já dentro da faixa recomendada) — nenhum valor alterado
+- [x] Custo OpenAI rastreável (`embedding_tokens` por documento, `duration_ms` por chamada) — base para cobrança futura, nenhuma cobrança implementada
+- [x] Testes novos: `duplicate-check.test.ts`, `file-type.test.ts`, `extract-text.test.ts` (mock de `officeparser`); `npm run typecheck`/`lint`/`build` limpos; módulo RAG 17/17 testes passando
+- [ ] Aplicar migration `035` em produção (manual, SQL Editor) e validar com teste real (upload → progresso granular na UI → exclusão)
+
 ## Status geral
-Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG, validado em produção real), Widget IA no site. Todas as migrations até `034` aplicadas.
+Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG, validado em produção real; estabilização da Fase 7.1 implementada, aguardando aplicação da migration `035`), Widget IA no site. Todas as migrations até `034` aplicadas (`035` pendente).
 
 ## Próximo a planejar
 - Enforcement real de billing por `access_status` (bloquear CRM/automações) — fase própria, não iniciar sem aprovação explícita.

@@ -18,6 +18,21 @@ interface OpenAIErrorResponse {
   error?: { message?: string; type?: string; code?: string }
 }
 
+/**
+ * Carries the HTTP status alongside the message so callers (process-
+ * document.ts) can tell a temporary OpenAI failure (429/5xx — worth
+ * suggesting "tente novamente") apart from a permanent one (4xx like
+ * an invalid key) without re-parsing the message string.
+ */
+export class OpenAIRequestError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'OpenAIRequestError'
+    this.status = status
+  }
+}
+
 async function throwOpenAIError(response: Response, fallback: string): Promise<never> {
   let message = fallback
   try {
@@ -26,7 +41,7 @@ async function throwOpenAIError(response: Response, fallback: string): Promise<n
   } catch {
     // response body wasn't JSON — keep the fallback
   }
-  throw new Error(message)
+  throw new OpenAIRequestError(message, response.status)
 }
 
 export interface OpenAIResponseResult {
@@ -106,12 +121,17 @@ export async function createOpenAIResponse(
  * endpoint accepts an array natively. Callers are responsible for
  * keeping batch size reasonable (the RAG module batches at 96 inputs).
  */
+export interface OpenAIEmbeddingsResult {
+  embeddings: number[][]
+  totalTokens: number
+}
+
 export async function createOpenAIEmbeddings(
   apiKey: string,
   model: string,
   texts: string[],
-): Promise<number[][]> {
-  if (texts.length === 0) return []
+): Promise<OpenAIEmbeddingsResult> {
+  if (texts.length === 0) return { embeddings: [], totalTokens: 0 }
 
   const response = await fetch(`${OPENAI_API_BASE}/embeddings`, {
     method: 'POST',
@@ -126,10 +146,16 @@ export async function createOpenAIEmbeddings(
     await throwOpenAIError(response, `OpenAI respondeu com erro ${response.status}`)
   }
 
-  const data = (await response.json()) as { data?: Array<{ embedding: number[]; index: number }> }
+  const data = (await response.json()) as {
+    data?: Array<{ embedding: number[]; index: number }>
+    usage?: { total_tokens?: number }
+  }
   const items = data.data ?? []
   const sorted = [...items].sort((a, b) => a.index - b.index)
-  return sorted.map((item) => item.embedding)
+  return {
+    embeddings: sorted.map((item) => item.embedding),
+    totalTokens: data.usage?.total_tokens ?? 0,
+  }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { logRagEvent } from '@/lib/ai/rag'
 
 const BUCKET = 'ai-knowledge-documents'
 
@@ -60,7 +61,15 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 })
     }
 
-    await db.storage.from(BUCKET).remove([document.storage_path])
+    // Confirm the storage removal explicitly instead of firing-and-
+    // forgetting it — if it fails, the row is still deleted (no
+    // "ghost" document stuck because of a Storage hiccup) but the
+    // failure is logged so it's visible instead of silent.
+    const { error: storageError } = await db.storage.from(BUCKET).remove([document.storage_path])
+    const storageRemoved = !storageError
+    if (storageError) {
+      console.error('[knowledge-documents DELETE] storage removal failed:', storageError)
+    }
 
     const { error: deleteError } = await db
       .from('ai_documents')
@@ -69,9 +78,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       .eq('account_id', account.accountId)
     if (deleteError) {
       console.error('[knowledge-documents DELETE] failed:', deleteError)
+      logRagEvent('document.deleted', { accountId: account.accountId, documentId: id, storageRemoved, ok: false })
       return NextResponse.json({ error: 'Falha ao excluir o documento.' }, { status: 500 })
     }
 
+    logRagEvent('document.deleted', { accountId: account.accountId, documentId: id, storageRemoved, ok: true })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in /api/ai/knowledge-documents/[id] DELETE:', error)

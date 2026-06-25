@@ -14,14 +14,24 @@ export const EMBEDDING_MODEL = 'text-embedding-3-small'
 
 const BATCH_SIZE = 96
 
-export async function generateEmbeddings(apiKey: string, texts: string[]): Promise<number[][]> {
-  if (texts.length === 0) return []
+export interface GenerateEmbeddingsResult {
+  embeddings: number[][]
+  totalTokens: number
+}
+
+export async function generateEmbeddings(
+  apiKey: string,
+  texts: string[],
+): Promise<GenerateEmbeddingsResult> {
+  if (texts.length === 0) return { embeddings: [], totalTokens: 0 }
 
   const results: number[][] = []
+  let totalTokens = 0
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE)
-    const embeddings = await createOpenAIEmbeddings(apiKey, EMBEDDING_MODEL, batch)
-    results.push(...embeddings)
+    const batchResult = await createOpenAIEmbeddings(apiKey, EMBEDDING_MODEL, batch)
+    results.push(...batchResult.embeddings)
+    totalTokens += batchResult.totalTokens
   }
-  return results
+  return { embeddings: results, totalTokens }
 }

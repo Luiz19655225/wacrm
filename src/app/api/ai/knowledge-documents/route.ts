@@ -1,9 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { getAccountAiSettings } from '@/lib/ai/ai-settings'
-import { resolveFileType, processDocument } from '@/lib/ai/rag'
+import {
+  resolveFileType,
+  processDocument,
+  hashFileContent,
+  findDuplicateDocument,
+  logRagEvent,
+} from '@/lib/ai/rag'
 
 // ------------------------------------------------------------
 // POST /api/ai/knowledge-documents
@@ -15,6 +21,21 @@ import { resolveFileType, processDocument } from '@/lib/ai/rag'
 // directly). This route is intentionally thin: auth + validation +
 // storage upload + a row insert, then it hands off to
 // processDocument() (src/lib/ai/rag) for everything document-specific.
+//
+// Fase 7.1: the route now responds as soon as the row exists (status
+// 'extracting') instead of waiting for the whole pipeline, and uses
+// Next.js `after()` — a stable, documented primitive for "keep
+// working after the response is sent" (confirmed safe for this
+// project's Vercel Fluid Compute setup; same execution-time budget as
+// before, just with the response sent earlier) — to run
+// processDocument() afterwards. The browser polls the row's status
+// until it reaches 'ready'/'error' (see ai-documents-panel.tsx).
+//
+// Duplicate uploads (same SHA-256 of the raw bytes, already on this
+// account) are never blocked or silently reused automatically — that
+// decision belongs to whoever uploads. Without `force: true` in the
+// form data, a duplicate gets a 409 with the existing document so the
+// UI can ask "usar o existente ou enviar mesmo assim?".
 // ------------------------------------------------------------
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB, matches migration 034's bucket limit
@@ -57,6 +78,7 @@ export async function POST(request: Request) {
 
     const formData = await request.formData()
     const file = formData.get('file')
+    const force = formData.get('force') === 'true'
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 })
     }
@@ -75,6 +97,24 @@ export async function POST(request: Request) {
       )
     }
 
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const contentHash = hashFileContent(buffer)
+
+    if (!force) {
+      const existing = await findDuplicateDocument(account.accountId, contentHash)
+      if (existing) {
+        logRagEvent('upload.duplicate', { accountId: account.accountId, existingDocumentId: existing.id })
+        return NextResponse.json(
+          {
+            duplicate: true,
+            existingDocument: existing,
+            error: `Já existe um documento idêntico ("${existing.file_name}"). Use o existente ou envie mesmo assim.`,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     const aiSettings = await getAccountAiSettings(account.accountId)
     if (!aiSettings) {
       return NextResponse.json(
@@ -83,7 +123,6 @@ export async function POST(request: Request) {
       )
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
     const extension = file.name.split('.').pop() || fileType
     const storagePath = `account-${account.accountId}/${randomUUID()}.${extension}`
 
@@ -106,10 +145,13 @@ export async function POST(request: Request) {
         file_type: fileType,
         storage_path: storagePath,
         file_size_bytes: file.size,
-        status: 'processing',
+        content_hash: contentHash,
+        status: 'extracting',
         uploaded_by: user.id,
       })
-      .select('id, file_name, file_type, status, chunk_count, created_at')
+      .select(
+        'id, file_name, file_type, file_size_bytes, status, error_message, chunk_count, char_count, page_count, embedding_model, embedding_tokens, processing_duration_ms, created_at',
+      )
       .single()
 
     if (insertError || !document) {
@@ -118,25 +160,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Falha ao registrar o documento.' }, { status: 500 })
     }
 
-    // Synchronous processing — fine for the document sizes this
-    // feature targets, and keeps this phase free of queue/worker
-    // infrastructure. Errors are captured on the document row itself
-    // (status: 'error'), never thrown back as a 500 here.
-    await processDocument({
-      accountId: account.accountId,
-      documentId: document.id,
-      buffer,
-      fileType,
-      apiKey: aiSettings.apiKey,
+    logRagEvent('upload.started', { accountId: account.accountId, documentId: document.id, fileType })
+
+    // Respond as soon as the row + file exist — the rest of the
+    // pipeline (extract -> embed -> index) continues below via
+    // after(), updating this same row's status at each stage. The UI
+    // polls the row until status reaches 'ready'/'error'. Errors are
+    // captured on the row itself (status: 'error'), never thrown back
+    // as a 500 here — processDocument is best-effort by design.
+    after(async () => {
+      await processDocument({
+        accountId: account.accountId,
+        documentId: document.id,
+        buffer,
+        fileType,
+        apiKey: aiSettings.apiKey,
+      })
+      logRagEvent('upload.completed', { accountId: account.accountId, documentId: document.id })
     })
 
-    const { data: finalDocument } = await db
-      .from('ai_documents')
-      .select('id, file_name, file_type, status, error_message, chunk_count, created_at')
-      .eq('id', document.id)
-      .single()
-
-    return NextResponse.json({ document: finalDocument ?? document })
+    return NextResponse.json({ document })
   } catch (error) {
     console.error('Error in /api/ai/knowledge-documents POST:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

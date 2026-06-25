@@ -147,9 +147,15 @@ export interface AiDocument {
   account_id: string;
   file_name: string;
   file_type: string;
-  status: 'processing' | 'ready' | 'error';
+  file_size_bytes: number | null;
+  status: 'processing' | 'extracting' | 'embedding' | 'indexing' | 'ready' | 'error';
   error_message: string | null;
   chunk_count: number;
+  char_count: number | null;
+  page_count: number | null;
+  embedding_model: string | null;
+  embedding_tokens: number | null;
+  processing_duration_ms: number | null;
   created_at: string;
 }
 

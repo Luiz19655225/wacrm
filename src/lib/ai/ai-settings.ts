@@ -48,6 +48,8 @@ export type AiFeature =
   | 'classify_lead'
   | 'site_widget_reply'
   | 'connection_test'
+  | 'rag_document_ingest'
+  | 'rag_search'
 
 interface LogAiUsageArgs {
   accountId: string
@@ -56,6 +58,8 @@ interface LogAiUsageArgs {
   model?: string | null
   inputTokens?: number | null
   outputTokens?: number | null
+  /** Wall-clock duration of the call this log entry represents, in ms. */
+  durationMs?: number | null
   status: 'success' | 'error'
   errorMessage?: string | null
 }
@@ -73,6 +77,7 @@ export async function logAiUsage(args: LogAiUsageArgs): Promise<void> {
       model: args.model ?? null,
       tokens_input: args.inputTokens ?? null,
       tokens_output: args.outputTokens ?? null,
+      duration_ms: args.durationMs ?? null,
       status: args.status,
       error_message: args.errorMessage ?? null,
     })
