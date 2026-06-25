@@ -108,9 +108,9 @@ Continuação da Fase 3 fechada (mídia inbound + CRM automático + outbound, to
 3. **Respostas rápidas (nova funcionalidade)** — o composer do Inbox já mostrava a dica "Digite '/' para respostas rápidas" há tempo, mas a funcionalidade nunca existiu (não confundir com `message_templates`, que são templates HSM aprovados pela Meta e não funcionam em contas Evolution/Baileys). Implementado do zero: tabela `quick_replies` (migration `031_quick_replies.sql`, **ainda precisa ser aplicada manualmente no SQL Editor do Supabase** — mesma rotina das migrations 029/030), painel de gestão em Configurações → "Respostas rápidas" (`quick-replies-manager.tsx`, CRUD completo), e detecção de "/atalho" no campo de mensagem (`message-composer.tsx`) que sugere e insere o texto salvo — funciona com qualquer provedor de WhatsApp porque é texto puro enviado pelo fluxo normal de envio (não passa pelo sistema de templates Meta).
 4. **Automação comercial (achado crítico corrigido)** — durante a implementação, descoberto que o passo `send_message` do engine de automações (`src/lib/automations/meta-send.ts`) só sabia enviar via Meta (`whatsapp_config`), e a conta de teste é 100% Evolution — qualquer automação com esse passo falharia silenciosamente. Corrigido com despacho por `connection_id` da conversa (Meta quando `null`, Evolution quando preenchido), espelhando o padrão já usado em `/api/whatsapp/send`. Com o bug corrigido, a automação **"Boas-vindas + negociação para novo contato"** (já ativa em produção desde a Fase 3, criada a partir do template `new_contact_to_pipeline`) ganhou um segundo passo `send_message` com o texto de boas-vindas — fechando o fluxo completo pedido: contato novo → negociação criada no Pipeline → mensagem automática enviada → registrada no histórico (`messages`) → log da automação (`automation_logs`, já existia). Deliberado **não criar uma segunda automação** para isso: o engine roda *todas* as automações ativas que casam com um `trigger_type`, então duas automações com `new_contact_created` ativas ao mesmo tempo criariam 2 negociações duplicadas por contato novo.
 
-**Pendência imediata**: aplicar `supabase/migrations/031_quick_replies.sql` manualmente no SQL Editor do Supabase antes de usar "Respostas rápidas" em produção — sem a tabela, o painel de Configurações e o atalho "/" no Inbox não funcionam (erro de tabela inexistente).
-
 `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` limpos nesta rodada.
+
+**Concluído em 24/06/2026 (encerramento de sessão)**: migration `031_quick_replies.sql` aplicada pelo usuário no SQL Editor do Supabase. "Respostas rápidas" validada em produção: menu corrigido, navegação das abas de Configurações corrigida, atalho "/" no Inbox funcionando. Fase 4 sem pendências.
 
 ## Fase 5 — Assistente IA (OpenAI) + Atendente no site (24/06/2026)
 Implementação completa (Partes 1, 2, 3-fundação e 4). Regra central: **cada conta usa sua própria chave OpenAI** — não existe chave global do sistema. API usada: **Responses API** (`POST /v1/responses`), explicitamente não a Assistants API (legada). Cliente OpenAI escrito à mão via `fetch` (sem dependência `openai` no `package.json`, seguindo o padrão da casa de clientes manuais como `meta-api.ts`/`evolution-api.ts`).
@@ -140,23 +140,47 @@ Transforma a IA de "só conectada à OpenAI" em uma IA com base de conhecimento 
 4. **Sem rota de API nova** — diferente da Fase 5 (que precisou de rotas server-side para criptografar a chave OpenAI), as 5 tabelas desta fase não guardam segredo nenhum, então o CRUD é direto do componente para o Supabase (client do usuário, RLS aplica o controle), seguindo a mesma escolha de arquitetura de `quick_replies`.
 5. **Não testado nesta rodada** (mesma limitação da Fase 5 — sem chave OpenAI real disponível no ambiente de implementação): não foi possível confirmar visualmente que o conteúdo de cada seção realmente aparece formatado na resposta da IA. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos.
 
-**Pendência imediata**: aplicar `supabase/migrations/033_ai_knowledge_base.sql` manualmente no SQL Editor do Supabase — sem ela, as 5 novas abas de Configurações → IA (Perfil/Produtos/FAQ/Objetivos/Regras) dão erro de tabela inexistente.
+**Concluído em 24/06/2026 (encerramento de sessão)**: migration `033_ai_knowledge_base.sql` aplicada pelo usuário no SQL Editor do Supabase. As 5 abas (Perfil/Produtos/FAQ/Objetivos/Regras) estão operacionais. Além disso, o prompt do assistente (campo "Instruções personalizadas" da aba OpenAI) foi simplificado pelo usuário: a base de conhecimento (estas 5 abas) passou a ser a fonte automática de fatos sobre a empresa em todo prompt, e o campo de instruções customizadas ficou reservado só para *comportamento* da IA (tom, formato), não para repetir fatos que já vêm das outras abas. Fase 6 sem pendências.
+
+## Fase 7 — Base de Conhecimento Inteligente / RAG (25/06/2026)
+Implementação completa. **Objetivo**: permitir que cada empresa envie documentos (PDF, DOCX, PPTX, XLSX, TXT) para treinar a IA, consultados por busca semântica (RAG) antes de responder ao cliente — **camada adicional** sobre a Fase 6 (Perfil/Produtos/FAQ/Objetivos/Regras), não um substituto.
+
+1. **Banco** — migration `supabase/migrations/034_ai_rag_documents.sql` (criada, **ainda não aplicada** — mesma rotina manual no SQL Editor do Supabase): habilita a extensão `vector` (pgvector); tabela `ai_documents` (1 linha por arquivo: status `processing`/`ready`/`error`, `error_message`, `chunk_count`; `source_type` fixado em `'upload'` por um CHECK, propositalmente preparado para uma fase futura aceitar outras origens — URL/site, Google Drive, OneDrive, Notion, API externa — sem migração quebrada); tabela `ai_document_chunks` (texto + `embedding VECTOR(1536)` + `embedding_model`, sem nenhuma RLS policy — só a service role toca nela); índice HNSW (`vector_cosine_ops`); função SQL `match_ai_document_chunks()` (`SECURITY DEFINER`, filtra por `account_id`). Bucket de Storage novo **privado** `ai-knowledge-documents` (diferente de `chat-media`, que é público) — política de escrita restrita a `admin`/`owner`.
+2. **Serviço RAG desacoplado** — `src/lib/ai/rag/` (não pertence ao Inbox; é um serviço genérico que qualquer funcionalidade futura pode consumir — automações, agentes especializados, chat interno, API pública, novos canais como Instagram/Telegram/Messenger/E-mail). Cada responsabilidade em sua própria função: `extractText` (officeparser para PDF/DOCX/PPTX/XLSX; TXT lido direto), `chunkText` (paragraph-aware, ~1800 caracteres + overlap, testado em `chunk-text.test.ts`), `generateEmbeddings` (lotes de 96, delegando o HTTP real para `openai-client.ts`), `storeChunks`, `searchRelevantChunks` (encapsula a função SQL — nenhuma tela/API fora do módulo conhece `match_ai_document_chunks`), `buildRagPromptBlock` (formatação pura), `processDocument` (orquestra a pipeline completa de ingestão). API pública do serviço: `src/lib/ai/rag/index.ts`.
+3. **Embeddings centralizados** — `createOpenAIEmbeddings()` adicionada a `src/lib/ai/openai-client.ts` (modelo `text-embedding-3-small`, 1536 dimensões). Nenhuma chamada HTTP à OpenAI existe fora desse arquivo — `rag/embeddings.ts` só decide o tamanho do lote, não faz fetch.
+4. **Upload (única rota nova da fase)** — `POST /api/ai/knowledge-documents` (admin/owner apenas; valida tipo/tamanho — limite 15 MB; sobe pro Storage; cria a linha em `ai_documents`; chama `processDocument` de forma **síncrona**, dentro da própria requisição, sem fila/worker) e `DELETE /api/ai/knowledge-documents/[id]` (remove o objeto do Storage + a linha; chunks somem via `ON DELETE CASCADE`). Leitura da lista não precisa de rota — direto client → Supabase, RLS já libera para qualquer membro (mesmo padrão de `ai_products`/`ai_faqs`).
+5. **Integração no prompt** — ordem final: **Perfil + Produtos + FAQ + Objetivos + Regras + Documentos relevantes (RAG) + Instruções personalizadas + Histórico**. Só os pontos que respondem diretamente ao cliente buscam RAG: `suggestReply()` (`src/lib/ai/inbox-assistant.ts`, usando a última mensagem do cliente como query) e o widget do site (`src/app/api/public/site-widget/message/route.ts`, usando a mensagem do visitante). `summarizeConversation`/`classifyLead` **não** chamam RAG (ferramentas internas de análise, sem necessidade do custo extra de embedding).
+6. **Best-effort e performance** — `searchRelevantChunks` nunca lança erro (falha de embedding, conta sem chave, erro do pgvector → degrada para "sem documentos", igual ao padrão já usado em `getAccountKnowledgeBase`); resultado limitado a 5 trechos e a um total de ~6000 caracteres, mesmo que a conta acumule centenas de documentos no futuro — o prompt não cresce sem controle.
+7. **Interface** — nova sub-aba "Documentos" em Configurações → IA (`ai-documents-panel.tsx`), depois de "Regras": lista com status, upload (síncrono — a resposta já vem com o resultado final, sem necessidade de polling), exclusão com confirmação. Escrita visível só para `admin`/`owner` (`canEditSettings`).
+8. **Escopo desta fase, deliberadamente** — sem OCR, sem fila/worker, sem processamento assíncrono, sem versionamento de documentos, sem busca híbrida/re-ranking, sem múltiplos modelos de embedding simultâneos. Fica só: Upload → Extração → Chunking → Embeddings → Busca vetorial → Integração na IA.
+9. **Não testado nesta rodada** (mesma limitação das Fases 5/6 — sem chave OpenAI real disponível no ambiente de implementação): não foi possível confirmar visualmente um upload real gerando embeddings/resposta da IA. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos; testes unitários novos de `chunkText` (6/6) passando.
+
+**Pendência imediata**: aplicar `supabase/migrations/034_ai_rag_documents.sql` manualmente no SQL Editor do Supabase — sem ela, a aba "Documentos" e o upload dão erro de tabela/função inexistente.
 
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 e 3 fechadas, sem pendências bloqueantes.
+Fases 2 a 6 fechadas, sem pendências bloqueantes — migrations `024` a `033` aplicadas em produção.
 
-Fase 4 (MVP operacional) — ver seção acima. Pendência imediata: aplicar a migration `031_quick_replies.sql` no Supabase (manual, SQL Editor).
-
-Fase 5 (Assistente IA + Atendente no site) — concluída: migration `032` aplicada e `SITE_WIDGET_ACCOUNT_ID` configurada na Vercel. Sem chave OpenAI real configurada por conta em Configurações → IA → "OpenAI", nenhum recurso de IA funciona (esperado — é por design, cada conta usa sua própria chave).
-
-Fase 6 (IA treinável por empresa) — ver seção acima. Pendência imediata: aplicar a migration `033_ai_knowledge_base.sql` no Supabase (manual, SQL Editor).
+Fase 7 (RAG) implementada nesta sessão — pendência imediata: aplicar a migration `034_ai_rag_documents.sql` (ver seção acima).
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
 - Adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 mais abaixo) — não relacionada à Fase 3/4.
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
+
+## Estado atual da plataforma (25/06/2026)
+WAVON em produção (`www.wavon.com.br`) com:
+- CRM (Contatos, Pipeline/Negociações, Automações)
+- Inbox com WhatsApp via Evolution API (inbound e outbound validados, mídias inbound funcionando)
+- Respostas rápidas ("/atalho" no composer)
+- IA integrada via OpenAI (Responses API), chave própria por conta, criptografada
+- Assistente IA no Inbox: sugerir resposta, resumir conversa, classificar lead
+- Base de Conhecimento da IA: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
+- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`), pronto para outros consumidores futuros (automações, agentes, API pública, novos canais)
+- Widget de atendimento IA no site público, conversas chegando ao Inbox normal, IA usando a chave OpenAI da própria conta
+
+Migrations até `033` aplicadas em produção; `034` (Fase 7) pronta, aguardando aplicação manual do usuário.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

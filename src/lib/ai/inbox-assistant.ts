@@ -1,6 +1,7 @@
 import { createOpenAIResponse } from './openai-client'
 import { getAccountAiSettings, logAiUsage } from './ai-settings'
 import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from './knowledge-base'
+import { searchRelevantChunks, buildRagPromptBlock } from './rag'
 
 // ------------------------------------------------------------
 // Inbox AI features: suggest reply, summarize, classify lead.
@@ -28,19 +29,37 @@ function buildTranscript(messages: TranscriptMessage[], contactName?: string | n
 }
 
 // Order matches the product spec: Perfil + Produtos + FAQ + Objetivos
-// + Regras (the knowledge base) before the free-form customSystemPrompt,
-// before the task-specific instructions each caller appends. The
-// conversation transcript itself (Histórico) is passed separately as
-// `input`, always last.
-function baseInstructions(customSystemPrompt: string | null, knowledgeBlock: string): string {
+// + Regras (the structured knowledge base) + Documentos relevantes
+// (RAG, Fase 7) before the free-form customSystemPrompt, before the
+// task-specific instructions each caller appends. The conversation
+// transcript itself (Histórico) is passed separately as `input`,
+// always last. `ragBlock` defaults to '' — only suggestReply (the
+// function that actually answers the customer) fetches it; summarize/
+// classify are internal analysis tools and skip the extra embedding
+// call.
+function baseInstructions(
+  customSystemPrompt: string | null,
+  knowledgeBlock: string,
+  ragBlock: string = '',
+): string {
   return [
     'Você é um assistente de atendimento ao cliente via WhatsApp para uma empresa brasileira que usa o CRM WAVON.',
     'Responda sempre em português do Brasil, de forma natural, cordial e objetiva.',
     knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
+    ragBlock ? `Use os trechos de documentos abaixo, se forem relevantes para a pergunta do cliente:\n\n${ragBlock}` : null,
     customSystemPrompt ? `Instruções específicas desta empresa: ${customSystemPrompt}` : null,
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+function lastCustomerMessage(messages: TranscriptMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].sender_type === 'customer') {
+      return messages[i].content_text?.trim() || ''
+    }
+  }
+  return ''
 }
 
 interface AssistantArgs {
@@ -62,8 +81,12 @@ export async function suggestReply(
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
   const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
+  const ragQuery = lastCustomerMessage(args.messages)
+  const ragBlock = ragQuery
+    ? buildRagPromptBlock(await searchRelevantChunks(args.accountId, settings.apiKey, ragQuery))
+    : ''
   const transcript = buildTranscript(args.messages, args.contactName)
-  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock, ragBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
 
   try {
     const result = await createOpenAIResponse({

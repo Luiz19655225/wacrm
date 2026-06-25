@@ -9,6 +9,7 @@ import { findOrCreateContact, findOrCreateConversation } from '@/lib/whatsapp/co
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { getAccountAiSettings, logAiUsage } from '@/lib/ai/ai-settings'
 import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from '@/lib/ai/knowledge-base'
+import { searchRelevantChunks, buildRagPromptBlock } from '@/lib/ai/rag'
 import { createOpenAIResponse } from '@/lib/ai/openai-client'
 import { normalizePhone, isValidE164 } from '@/lib/whatsapp/phone-utils'
 import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
@@ -212,12 +213,16 @@ export async function POST(request: Request) {
         .join('\n')
 
       const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(ownerAccountId))
+      const ragBlock = buildRagPromptBlock(
+        await searchRelevantChunks(ownerAccountId, aiSettings.apiKey, message),
+      )
 
       const instructions = [
         'Você é o atendente virtual no site público de uma empresa que usa o CRM WAVON.',
         'Um visitante está conversando com você pelo widget de chat do site. Responda em português do Brasil, de forma simpática, breve e profissional.',
         'Se a pergunta exigir um humano, diga que a equipe vai continuar o atendimento pelo WhatsApp informado.',
         knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
+        ragBlock ? `Use os trechos de documentos abaixo, se forem relevantes para a pergunta do visitante:\n\n${ragBlock}` : null,
         aiSettings.customSystemPrompt
           ? `Instruções específicas desta empresa: ${aiSettings.customSystemPrompt}`
           : null,

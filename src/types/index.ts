@@ -141,6 +141,18 @@ export interface AiFaq {
   updated_at: string;
 }
 
+/** Fase 7 — RAG: a document uploaded to train the AI's semantic search. */
+export interface AiDocument {
+  id: string;
+  account_id: string;
+  file_name: string;
+  file_type: string;
+  status: 'processing' | 'ready' | 'error';
+  error_message: string | null;
+  chunk_count: number;
+  created_at: string;
+}
+
 export interface ContactTag {
   id: string;
   contact_id: string;

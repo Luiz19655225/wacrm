@@ -8,17 +8,20 @@ import { AiProductsPanel } from './ai-products-panel';
 import { AiFaqsPanel } from './ai-faqs-panel';
 import { AiGoalsPanel } from './ai-goals-panel';
 import { AiRulesPanel } from './ai-rules-panel';
+import { AiDocumentsPanel } from './ai-documents-panel';
 
 const TAB_TRIGGER_CLASS =
   'data-active:bg-muted data-active:text-primary text-muted-foreground';
 
 /**
  * "Configurações → IA" — Fase 6 turned this from a single OpenAI
- * credentials card into a full per-account knowledge base. Every AI
- * call (Inbox suggest/summarize/classify + the site widget) builds
- * its prompt as Perfil + Produtos + FAQ + Objetivos + Regras +
- * Histórico, in that order — these six tabs are exactly those pieces
- * plus the OpenAI connection itself.
+ * credentials card into a full per-account knowledge base. Fase 7
+ * (RAG) added "Documentos": free-form files searched by similarity,
+ * layered on top of the same structured sections. Every AI call that
+ * responds to a customer builds its prompt as Perfil + Produtos +
+ * FAQ + Objetivos + Regras + Documentos relevantes + Histórico, in
+ * that order — these tabs are exactly those pieces plus the OpenAI
+ * connection itself.
  */
 export function AiSection() {
   return (
@@ -49,6 +52,9 @@ export function AiSection() {
             <TabsTrigger value="regras" className={TAB_TRIGGER_CLASS}>
               Regras
             </TabsTrigger>
+            <TabsTrigger value="documentos" className={TAB_TRIGGER_CLASS}>
+              Documentos
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -69,6 +75,9 @@ export function AiSection() {
         </TabsContent>
         <TabsContent value="regras" className="mt-4">
           <AiRulesPanel />
+        </TabsContent>
+        <TabsContent value="documentos" className="mt-4">
+          <AiDocumentsPanel />
         </TabsContent>
       </Tabs>
     </section>

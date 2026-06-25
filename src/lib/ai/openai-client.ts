@@ -96,6 +96,43 @@ export async function createOpenAIResponse(
 }
 
 /**
+ * Single call to the Embeddings API — every embedding generated
+ * anywhere in the app (document chunks at ingestion time, a query at
+ * search time) goes through this function. Nothing outside this file
+ * makes an HTTP request to OpenAI; callers (the RAG module) only ever
+ * pass plain strings in and get plain vectors back.
+ *
+ * `texts` is sent as a single batched request — OpenAI's embeddings
+ * endpoint accepts an array natively. Callers are responsible for
+ * keeping batch size reasonable (the RAG module batches at 96 inputs).
+ */
+export async function createOpenAIEmbeddings(
+  apiKey: string,
+  model: string,
+  texts: string[],
+): Promise<number[][]> {
+  if (texts.length === 0) return []
+
+  const response = await fetch(`${OPENAI_API_BASE}/embeddings`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model, input: texts }),
+  })
+
+  if (!response.ok) {
+    await throwOpenAIError(response, `OpenAI respondeu com erro ${response.status}`)
+  }
+
+  const data = (await response.json()) as { data?: Array<{ embedding: number[]; index: number }> }
+  const items = data.data ?? []
+  const sorted = [...items].sort((a, b) => a.index - b.index)
+  return sorted.map((item) => item.embedding)
+}
+
+/**
  * Cheap auth probe for "Testar conexão" / save-time validation —
  * lists models instead of calling /responses, so checking a key
  * doesn't burn completion tokens.
