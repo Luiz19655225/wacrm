@@ -27,6 +27,7 @@ import {
   FileSearch,
   Flame,
   Loader2,
+  CalendarDays,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -219,6 +220,16 @@ export function MessageThread({
     | { type: "classify"; data: LeadClassificationResult }
     | null
   >(null);
+
+  // ---- Scheduling dialog --------------------------------------------------
+  interface AvailableSlot { startISO: string; endISO: string; label: string }
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleSlots, setScheduleSlots] = useState<AvailableSlot[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleCreating, setScheduleCreating] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleDuration, setScheduleDuration] = useState(30);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -873,6 +884,72 @@ export function MessageThread({
     }
   }, [conversation, aiLoading]);
 
+  const handleOpenSchedule = useCallback(async () => {
+    if (!conversation) return;
+    setScheduleOpen(true);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    setScheduleSlots([]);
+    setScheduleLoading(true);
+    try {
+      const res = await fetch("/api/calendar/availability?days=7&max=6");
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        setScheduleError(d.error ?? "Agenda não disponível.");
+        return;
+      }
+      const d = await res.json() as { slots?: AvailableSlot[]; duration_minutes?: number };
+      setScheduleSlots(d.slots ?? []);
+      setScheduleDuration(d.duration_minutes ?? 30);
+      if (!d.slots?.length) setScheduleError("Nenhum horário disponível nos próximos 7 dias.");
+    } catch {
+      setScheduleError("Falha ao consultar disponibilidade.");
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [conversation]);
+
+  const handleCreateAppointment = useCallback(async (slot: AvailableSlot) => {
+    if (!conversation) return;
+    setScheduleCreating(true);
+    setScheduleError(null);
+    try {
+      const contactId = typeof conversation.contact === "object" && conversation.contact !== null
+        ? (conversation.contact as { id?: string }).id
+        : undefined;
+      const contactEmail = typeof conversation.contact === "object" && conversation.contact !== null
+        ? (conversation.contact as { email?: string }).email
+        : undefined;
+      const contactName = typeof conversation.contact === "object" && conversation.contact !== null
+        ? (conversation.contact as { name?: string }).name
+        : undefined;
+
+      const res = await fetch("/api/calendar/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversation.id,
+          contact_id: contactId ?? null,
+          start_iso: slot.startISO,
+          end_iso: slot.endISO,
+          attendee_email: contactEmail ?? null,
+          attendee_name: contactName ?? null,
+        }),
+      });
+      const d = await res.json() as { error?: string; online_meeting_url?: string };
+      if (!res.ok) {
+        setScheduleError(d.error ?? "Falha ao criar agendamento.");
+        return;
+      }
+      const linkInfo = d.online_meeting_url ? ` Link: ${d.online_meeting_url}` : "";
+      setScheduleSuccess(`Agendamento criado: ${slot.label}.${linkInfo}`);
+    } catch {
+      setScheduleError("Falha ao criar agendamento.");
+    } finally {
+      setScheduleCreating(false);
+    }
+  }, [conversation]);
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -1024,6 +1101,16 @@ export function MessageThread({
               <Flame className="h-3.5 w-3.5" />
             )}
             <span className="hidden sm:inline">Classificar lead</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenSchedule}
+            disabled={aiLoading !== null}
+            title="Criar agendamento"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Agendar</span>
           </button>
 
           {/* Manual refresh — forces a refetch of the messages + the
@@ -1302,6 +1389,57 @@ export function MessageThread({
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
       />
+
+      {/* Scheduling dialog */}
+      <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) { setScheduleSuccess(null); setScheduleError(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Criar agendamento</DialogTitle>
+            <DialogDescription>
+              Selecione um horário disponível para criar um compromisso no calendário.
+              {scheduleDuration > 0 && ` Duração: ${scheduleDuration} minutos.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {scheduleLoading && (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Consultando disponibilidade…
+            </div>
+          )}
+
+          {scheduleError && !scheduleLoading && (
+            <p className="text-sm text-destructive">{scheduleError}</p>
+          )}
+
+          {scheduleSuccess && (
+            <p className="text-sm text-green-600 dark:text-green-400 whitespace-pre-wrap">{scheduleSuccess}</p>
+          )}
+
+          {!scheduleLoading && !scheduleSuccess && scheduleSlots.length > 0 && (
+            <div className="space-y-2">
+              {scheduleSlots.map((slot) => (
+                <button
+                  key={slot.startISO}
+                  type="button"
+                  onClick={() => handleCreateAppointment(slot)}
+                  disabled={scheduleCreating}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                  {scheduleCreating ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Criando…
+                    </span>
+                  ) : (
+                    slot.label
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

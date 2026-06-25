@@ -11,6 +11,7 @@ import { getAccountAiSettings, logAiUsage } from '@/lib/ai/ai-settings'
 import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from '@/lib/ai/knowledge-base'
 import { searchRelevantChunks, buildRagPromptBlock } from '@/lib/ai/rag'
 import { createOpenAIResponse } from '@/lib/ai/openai-client'
+import { getSchedulingContext } from '@/lib/ai/scheduling-assistant'
 import { normalizePhone, isValidE164, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
 
@@ -203,10 +204,8 @@ export async function POST(request: Request) {
     let replyText = FALLBACK_REPLY
     const aiSettings = await getAccountAiSettings(ownerAccountId)
     if (aiSettings) {
-      // Three independent lookups — none depends on another's result —
-      // run them concurrently rather than one after the other on the
-      // visitor's request path.
-      const [{ data: history }, knowledgeBase, relevantChunks] = await Promise.all([
+      // All independent lookups run concurrently (history, KB, RAG, scheduling).
+      const [{ data: history }, knowledgeBase, relevantChunks, schedulingCtx] = await Promise.all([
         db
           .from('messages')
           .select('sender_type, content_type, content_text')
@@ -214,6 +213,7 @@ export async function POST(request: Request) {
           .order('created_at', { ascending: true }),
         getAccountKnowledgeBase(ownerAccountId),
         searchRelevantChunks(ownerAccountId, aiSettings.apiKey, message),
+        getSchedulingContext({ accountId: ownerAccountId }),
       ])
 
       const visitorName = contact?.name || name || 'Visitante'
@@ -228,6 +228,7 @@ export async function POST(request: Request) {
 
       const knowledgeBlock = buildKnowledgeBasePromptBlock(knowledgeBase)
       const ragBlock = buildRagPromptBlock(relevantChunks)
+      const schedulingBlock = schedulingCtx.promptBlock ?? ''
 
       const instructions = [
         'Você é o atendente virtual no site público de uma empresa que usa o CRM WAVON.',
@@ -235,6 +236,7 @@ export async function POST(request: Request) {
         'Se a pergunta exigir um humano, diga que a equipe vai continuar o atendimento pelo WhatsApp informado.',
         knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
         ragBlock ? `Use os trechos de documentos abaixo, se forem relevantes para a pergunta do visitante:\n\n${ragBlock}` : null,
+        schedulingBlock || null,
         aiSettings.customSystemPrompt
           ? `Instruções específicas desta empresa: ${aiSettings.customSystemPrompt}`
           : null,

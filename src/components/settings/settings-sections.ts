@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   Coins,
   CreditCard,
   FileText,
@@ -29,6 +30,7 @@ export const SETTINGS_SECTIONS = [
   'appearance',
   'whatsapp',
   'ai',
+  'agenda',
   'templates',
   'quick-replies',
   'fields',
@@ -56,6 +58,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   appearance: { id: 'appearance', label: 'Aparência', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
   ai: { id: 'ai', label: 'IA / OpenAI', icon: Sparkles, group: 'workspace' },
+  agenda: { id: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'workspace' },
   templates: { id: 'templates', label: 'Modelos', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Respostas rápidas', icon: Reply, group: 'workspace' },
   fields: { id: 'fields', label: 'Campos e tags', icon: Tags, group: 'workspace' },

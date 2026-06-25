@@ -2,6 +2,7 @@ import { createOpenAIResponse } from './openai-client'
 import { getAccountAiSettings, logAiUsage } from './ai-settings'
 import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from './knowledge-base'
 import { searchRelevantChunks, buildRagPromptBlock } from './rag'
+import { getSchedulingContext } from './scheduling-assistant'
 
 // ------------------------------------------------------------
 // Inbox AI features: suggest reply, summarize, classify lead.
@@ -41,12 +42,14 @@ function baseInstructions(
   customSystemPrompt: string | null,
   knowledgeBlock: string,
   ragBlock: string = '',
+  schedulingBlock: string = '',
 ): string {
   return [
     'Você é um assistente de atendimento ao cliente via WhatsApp para uma empresa brasileira que usa o CRM WAVON.',
     'Responda sempre em português do Brasil, de forma natural, cordial e objetiva.',
     knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
     ragBlock ? `Use os trechos de documentos abaixo, se forem relevantes para a pergunta do cliente:\n\n${ragBlock}` : null,
+    schedulingBlock || null,
     customSystemPrompt ? `Instruções específicas desta empresa: ${customSystemPrompt}` : null,
   ]
     .filter(Boolean)
@@ -81,17 +84,17 @@ export async function suggestReply(
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
   const ragQuery = lastCustomerMessage(args.messages)
-  // Independent lookups (structured knowledge base vs. document
-  // search) — run them concurrently instead of one after the other,
-  // this is on the latency path of a button the agent is waiting on.
-  const [knowledgeBase, relevantChunks] = await Promise.all([
+  // All independent lookups run concurrently (KB, RAG, scheduling context).
+  const [knowledgeBase, relevantChunks, schedulingCtx] = await Promise.all([
     getAccountKnowledgeBase(args.accountId),
     ragQuery ? searchRelevantChunks(args.accountId, settings.apiKey, ragQuery) : Promise.resolve([]),
+    getSchedulingContext({ accountId: args.accountId }),
   ])
   const knowledgeBlock = buildKnowledgeBasePromptBlock(knowledgeBase)
   const ragBlock = buildRagPromptBlock(relevantChunks)
+  const schedulingBlock = schedulingCtx.promptBlock ?? ''
   const transcript = buildTranscript(args.messages, args.contactName)
-  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock, ragBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock, ragBlock, schedulingBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
 
   try {
     const result = await createOpenAIResponse({

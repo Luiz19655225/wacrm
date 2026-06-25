@@ -711,3 +711,55 @@ export interface AccountConnection {
   created_at: string;
   updated_at: string;
 }
+
+// ─── Calendar / Agenda (Fase 7.2) ─────────────────────────────────────────────
+
+export type CalendarProviderType = 'OUTLOOK';
+export type AppointmentStatus = 'scheduled' | 'cancelled' | 'completed';
+
+export interface CalendarSettings {
+  id: string;
+  account_id: string;
+  provider_type: CalendarProviderType;
+  calendar_email: string | null;
+  calendar_id: string | null;
+  timezone: string;
+  meeting_duration_minutes: number;
+  is_enabled: boolean;
+  connected_at: string;
+  updated_at: string;
+}
+
+export interface BusinessHours {
+  id: string;
+  account_id: string;
+  day_of_week: number;
+  is_open: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  timezone: string;
+  updated_at: string;
+}
+
+export interface CalendarAppointment {
+  id: string;
+  account_id: string;
+  conversation_id: string | null;
+  contact_id: string | null;
+  provider_type: CalendarProviderType;
+  external_event_id: string | null;
+  title: string;
+  start_at: string;
+  end_at: string;
+  online_meeting_url: string | null;
+  status: AppointmentStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimeSlot {
+  startISO: string;
+  endISO: string;
+  label: string;
+}

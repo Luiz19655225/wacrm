@@ -64,7 +64,7 @@ Pendências não-bloqueantes:
 - [x] Bug encontrado e corrigido durante a validação: 403 falso-positivo na 2ª mensagem de uma conversa do Widget (checagem de identidade usava comparação estrita de telefone, inconsistente com a comparação tolerante usada para resolver o contato) — corrigido com `phonesMatch`, mesma função já usada no resto do projeto
 
 ## Fase 7.1 — Estabilização do RAG
-✅ Implementada (commit pendente) — migration `035` ainda **não aplicada** em produção
+✅ Concluída e validada em produção (commit `2badeb5`)
 
 - [x] Migration `035_ai_rag_observability.sql` (aditiva): novos status transitórios (`extracting`/`embedding`/`indexing`), metadados (`char_count`, `page_count`, `embedding_model`, `embedding_tokens`, `processing_duration_ms`, `content_hash`), `ai_usage_logs` ganha `rag_document_ingest`/`rag_search` + `duration_ms`
 - [x] Progresso real sem fila: upload responde rápido (status `extracting`) e continua via `after()` do Next.js (verificado seguro neste ambiente Vercel/Fluid Compute antes de implementar); UI faz polling a ~1s só durante estados transitórios, parando imediatamente em `ready`/`error`
@@ -76,10 +76,37 @@ Pendências não-bloqueantes:
 - [x] Performance revisada (chunking e busca já dentro da faixa recomendada) — nenhum valor alterado
 - [x] Custo OpenAI rastreável (`embedding_tokens` por documento, `duration_ms` por chamada) — base para cobrança futura, nenhuma cobrança implementada
 - [x] Testes novos: `duplicate-check.test.ts`, `file-type.test.ts`, `extract-text.test.ts` (mock de `officeparser`); `npm run typecheck`/`lint`/`build` limpos; módulo RAG 17/17 testes passando
-- [ ] Aplicar migration `035` em produção (manual, SQL Editor) e validar com teste real (upload → progresso granular na UI → exclusão)
+- [x] Migration `035` aplicada em produção (manual, SQL Editor) e validada em produção real (teste "Produto X custa R$500" → progresso granular na UI → resposta correta da IA com observabilidade completa)
+
+## Fase 7.2 — Atendimento Fora do Horário + Agendamento Inteligente
+⏳ Implementada — aguardando ações manuais (Azure App + migration `036` + Vercel env vars) para deploy
+
+- [x] Migration `036_calendar_scheduling.sql` (criada, **AINDA NÃO APLICADA** — aplicar manualmente no SQL Editor): tabelas `calendar_settings`, `business_hours`, `calendar_appointments`; RLS em todas (leitura: qualquer membro; escrita: admin/owner); índices adequados
+- [x] Abstração `CalendarProvider` — `src/lib/calendar/types.ts`: interface `CalendarProvider`, `TimeSlot`, `BusyInterval`, `ResolvedCalendarSettings`, `BusinessHoursConfig`, `BusinessHoursStatus`; o restante do sistema nunca toca diretamente no provider
+- [x] Outlook Calendar via Microsoft Graph API — `src/lib/calendar/providers/outlook/`: `oauth.ts` (authorization code flow, authority `consumers`), `client.ts` (HTTP cru, sem SDK), `adapter.ts` (`OutlookCalendarAdapter implements CalendarProvider`)
+- [x] OAuth flow seguro — state param = `encrypt(accountId)` (AES-256-GCM, mesmo `encrypt()` já em uso no projeto); callback decripta sem precisar de session store server-side; redirect pós-conexão para `/settings?tab=agenda&connected=1`
+- [x] Registro no Azure App necessário (manual — `consumers` authority, escopos `offline_access Calendars.ReadWrite User.Read`, redirect URI `https://www.wavon.com.br/api/calendar/oauth/callback`)
+- [x] Horário comercial DST-safe — `src/lib/calendar/business-hours.ts`: `getLocalParts()`/`localToUTC()` via `Intl.DateTimeFormat` (resolve o problema de fuso horário sem precisar da Temporal API), `checkBusinessHours()`, `computeAvailableSlots()`, `formatSlotLabel()` em pt-BR
+- [x] Disponibilidade inteligente: busy intervals do Microsoft Graph → sobreposição com horário comercial → slots livres de N minutos → máximo 3 oferecidos à IA
+- [x] `getSchedulingContext()` — `src/lib/ai/scheduling-assistant.ts`: paralelo com RAG e Base de Conhecimento; nunca lança erro (degrada para `{isOpen: true, promptBlock: null}` em qualquer falha); injetado no Inbox (`suggestReply`) e no Widget do site
+- [x] Quando fora do horário: IA recebe bloco de instruções com horário local atual, quando abre e slots disponíveis — continua respondendo normalmente (nunca só "estamos fechados"), detecta intenção comercial, oferece máximo 3 slots em pt-BR
+- [x] Configurações → Agenda: nova seção (`CalendarDays` icon, grupo workspace) com 2 abas — "Conexão" (OAuth + preferências: fuso/duração) e "Horário comercial" (grade 7 dias com checkboxes + seletores de hora)
+- [x] Inbox → botão "Agendar": abre dialog com slots disponíveis → seleciona slot → `POST /api/calendar/appointments` → cria evento no Outlook → grava em `calendar_appointments` → registra mensagem no Inbox ("📅 Agendamento confirmado") → atualiza nota do deal no CRM
+- [x] Online meeting: Teams (`isOnlineMeeting: true`, `onlineMeetingProvider: 'teamsForBusiness'`) solicitado, com fallback gracioso para contas pessoais (sem exceção se o `joinUrl` não vier)
+- [x] Observabilidade: `src/lib/calendar/logger.ts` com `CalendarLogEvent` enum (OAuth, tokens, disponibilidade, agendamento, CRM) e `logCalendarEvent()` → JSON estruturado, mesmo padrão do `logRagEvent`
+- [x] `npm run typecheck`/`lint`/`build` limpos (0 erros, 0 warnings novos)
+
+Pendências (ações manuais necessárias antes do deploy):
+- [ ] Registrar Azure App em portal.azure.com: tipo "Contas pessoais da Microsoft apenas" (`consumers`), escopos `offline_access Calendars.ReadWrite User.Read`, URI de redirecionamento `https://www.wavon.com.br/api/calendar/oauth/callback`. Anotar `CLIENT_ID` e `CLIENT_SECRET`.
+- [ ] Configurar na Vercel: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL=https://www.wavon.com.br`
+- [ ] Aplicar migration `036_calendar_scheduling.sql` no SQL Editor do Supabase
+- [ ] Commit, push e deploy da Fase 7.2
+- [ ] Validar em produção: Configurações → Agenda → conectar Outlook → configurar horário comercial → testar resposta da IA fora do horário → testar agendamento pelo Inbox
 
 ## Status geral
-Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG, validado em produção real; estabilização da Fase 7.1 implementada, aguardando aplicação da migration `035`), Widget IA no site. Todas as migrations até `034` aplicadas (`035` pendente).
+Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG) + Widget IA no site. Todas as migrations até `035` aplicadas em produção.
+
+Fase 7.2 (Agendamento Inteligente) implementada localmente, aguardando Azure App registration + migration `036` + Vercel env vars para commit/deploy.
 
 ## Próximo a planejar
 - Enforcement real de billing por `access_status` (bloquear CRM/automações) — fase própria, não iniciar sem aprovação explícita.

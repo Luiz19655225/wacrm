@@ -159,7 +159,7 @@ Implementação completa. **Objetivo**: permitir que cada empresa envie document
 12. **Validado em produção real (25/06/2026)** — teste de ponta a ponta com documento real: TXT contendo "O código secreto do WAVON é 987654" enviado pela aba Documentos → status `ready`, chunk + embedding criados → pergunta enviada pelo Widget do site ("Qual é o código secreto do WAVON?") → **IA respondeu corretamente "O código secreto do WAVON é 987654."**, citando o conteúdo do documento. Confirma upload, extração, chunking, embeddings, pgvector/busca semântica e integração com o Widget funcionando de ponta a ponta em produção real.
 13. **Bug encontrado e corrigido durante essa validação (não era do RAG)** — a primeira tentativa do teste deu erro 403 "Não foi possível validar sua identidade nesta conversa" na **segunda** mensagem da mesma conversa do Widget, antes de qualquer lógica de IA/RAG rodar (`src/app/api/public/site-widget/message/route.ts`). Causa: a checagem de identidade de mensagens de continuação comparava `normalizePhone(contact.phone)` com igualdade estrita, mas o contato pode ter sido resolvido por `findOrCreateContact`/`findExistingContact` usando a comparação **tolerante** `phonesMatch` (tolerante a prefixo de tronco) — as duas checagens podiam divergir para o mesmo número em formatos diferentes. Corrigido trocando para `phonesMatch` também na checagem de continuação, deixando as duas etapas consistentes sobre o que significa "mesmo número". Commit `ef81777`, validado em produção com o teste do item 12 (a segunda mensagem da conversa de teste retornou 200 e chegou à IA normalmente).
 
-## Fase 7.1 — Estabilização do RAG (25/06/2026)
+## Fase 7.1 — Estabilização do RAG (25/06/2026) — ✅ CONCLUÍDA e validada em produção (commit `2badeb5`)
 Não é funcionalidade nova — consolidação do que a Fase 7 já validou em produção, fechando lacunas encontradas durante aquela validação (sem como confirmar pelos logs se `searchRelevantChunks` rodou; UI só mostrava "Processando" sem detalhe).
 
 1. **Migration `035_ai_rag_observability.sql`** (aditiva, **ainda não aplicada** — mesma rotina manual no SQL Editor): amplia o CHECK de `ai_documents.status` para incluir os 3 novos estados transitórios (`extracting`/`embedding`/`indexing`, mantendo `processing`/`ready`/`error`); novas colunas `char_count`, `page_count`, `embedding_model`, `embedding_tokens`, `processing_duration_ms`, `content_hash` (+ índice); `ai_usage_logs` ganha as features `rag_document_ingest`/`rag_search` e a coluna `duration_ms`.
@@ -174,10 +174,79 @@ Não é funcionalidade nova — consolidação do que a Fase 7 já validou em pr
 10. **Testes novos**: `duplicate-check.test.ts` (hash determinístico), `file-type.test.ts` (todos os tipos aceitos + rejeição de formatos legados/inválidos), `extract-text.test.ts` (com `vi.mock('officeparser')` simulando PDF/DOCX/PPTX — `chunk-text.test.ts` já existia). `npm run typecheck`, `npm run lint` (0 erros — mesmos warnings pré-existentes de outras partes do código, nenhum novo) e `npm run build` passaram limpos. `npm run test`: as 14 + 5 falhas pré-existentes em `flows/validate.test.ts` e `dashboard/date-utils.test.ts` (confirmadas via `git stash` como já presentes **antes** desta fase, não relacionadas ao RAG) continuam; todos os testes do módulo RAG passam (17/17 nos 4 arquivos).
 11. **Escopo respeitado** — nenhuma funcionalidade nova: sem fila/worker, sem OCR, sem versionamento, sem busca híbrida/re-ranking, sem cobrança real. Arquitetura da Fase 7 preservada integralmente.
 
+## Fase 7.2 — Atendimento Fora do Horário + Agendamento Inteligente (25/06/2026) — ⏳ IMPLEMENTADA, aguardando Azure App + migration `036` + Vercel env vars
+
+Objetivo: quando o cliente manda mensagem fora do horário comercial, a IA não responde só "estamos fechados" — ela continua atendendo normalmente e, quando detecta intenção comercial, oferece até 3 horários disponíveis do calendário. O agente pode confirmar o agendamento diretamente pelo Inbox.
+
+### Arquitetura — abstração CalendarProvider
+
+O restante do sistema nunca toca diretamente no Outlook/Google. Toda interação é via `CalendarProvider` (`src/lib/calendar/types.ts`): `getProviderEmail()`, `getFreeBusyIntervals()`, `createAppointment()`. Primeiro provider implementado: **Microsoft Outlook Calendar via Microsoft Graph API** (HTTP cru, sem SDK, mesmo padrão de `meta-api.ts` e `openai-client.ts`). Registry (`src/lib/calendar/registry.ts`) devolve `null` se não configurado/habilitado — a IA nunca quebra por calendário desconfigurado.
+
+### Banco — migration `036_calendar_scheduling.sql` (AINDA NÃO APLICADA)
+
+Três tabelas:
+- `calendar_settings` (1 linha por conta, UNIQUE `account_id`): tokens encriptados AES-256-GCM, `provider_type`, `calendar_email`, `timezone`, `meeting_duration_minutes`, `is_enabled`, `connected_at`
+- `business_hours` (7 linhas por conta, UNIQUE `account_id + day_of_week`, dia 0=Dom…6=Sáb): `start_time TIME`, `end_time TIME`, `is_open BOOLEAN`
+- `calendar_appointments` (histórico de agendamentos): `conversation_id`, `contact_id`, `external_event_id`, `online_meeting_url`, `status` CHECK (`scheduled`/`cancelled`/`completed`)
+
+RLS em todas as tabelas: leitura qualquer membro, escrita admin/owner. Índices em `conversation_id` e `(account_id, start_at)`.
+
+### OAuth Microsoft — flow seguro
+
+Autoridade: `https://login.microsoftonline.com/consumers/oauth2/v2.0` (contas pessoais Outlook). Escopos: `offline_access Calendars.ReadWrite User.Read`. State param = `encrypt(accountId)` (AES-256-GCM) — decodificado no callback sem session store. Tokens de acesso e refresh salvos criptografados em `calendar_settings.access_token_encrypted`/`refresh_token_encrypted`. Token refresh automático antes de cada chamada ao Graph.
+
+Azure App Registration necessária (manual — portal.azure.com):
+- Tipo de conta: "Contas Microsoft pessoais apenas" (`consumers`)
+- URI de redirecionamento: `https://www.wavon.com.br/api/calendar/oauth/callback`
+- Escopos a liberar: `Calendars.ReadWrite`, `User.Read` (delegado)
+- Anotar: `MICROSOFT_CLIENT_ID` e `MICROSOFT_CLIENT_SECRET`
+
+Env vars a configurar na Vercel (produção): `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL=https://www.wavon.com.br`
+
+### Lógica de horário comercial — DST-safe
+
+`getLocalParts(date, timezone)` via `Intl.DateTimeFormat.formatToParts()` — único método disponível no Node.js para conversão DST-safe (Temporal API não disponível). `localToUTC(year, month, day, h, m, timezone)`: cria data UTC naive, lê o horário local que ela produz, ajusta a diferença — garante comportamento correto durante mudanças de horário de verão.
+
+`computeAvailableSlots()`: recebe busy intervals do Graph → calcula interseção com janelas de horário comercial → divide em slots de N minutos → filtra sobrepostos → retorna máximo `maxSlots` (normalmente 3 para o bloco da IA). `formatSlotLabel()` em pt-BR: "Seg, 7 de julho às 14:00".
+
+### Integração na IA (Inbox + Widget)
+
+`getSchedulingContext({accountId})` em `src/lib/ai/scheduling-assistant.ts`: roda em paralelo com RAG e Base de Conhecimento (mesmo `Promise.all` já existente). Nunca lança — qualquer erro retorna `{isOpen: true, promptBlock: null, slots: []}` sem quebrar a resposta da IA.
+
+Quando fora do horário: injeta bloco de instruções com hora local atual, próxima abertura e lista de slots disponíveis com labels em pt-BR. Instruções: continuar atendendo normalmente, detectar interesse comercial, oferecer máximo 3 slots da lista, **não inventar horários**.
+
+### Agendamento pelo Inbox
+
+Novo botão "Agendar" (ícone `CalendarDays`) no cabeçalho da conversa em `message-thread.tsx`. Abre dialog que:
+1. Busca `GET /api/calendar/availability?days=7&max=6`
+2. Mostra slots formatados em pt-BR
+3. Ao selecionar: `POST /api/calendar/appointments` → cria evento no Outlook Graph → salva em `calendar_appointments` → insere mensagem "📅 Agendamento confirmado" no Inbox → atualiza `last_message_text` da conversa → adiciona nota ao deal mais recente do contato no CRM
+
+Teams meeting: solicitado (`isOnlineMeeting: true, onlineMeetingProvider: 'teamsForBusiness'`) com fallback gracioso para contas pessoais (sem exceção se `joinUrl` não vier, `online_meeting_url` fica `null`).
+
+### Observabilidade
+
+`src/lib/calendar/logger.ts` — `CalendarLogEvent` enum: `OAuthStarted/Completed/Error`, `TokenRefreshed/TokenFailed`, `Disconnected`, `BusinessHoursChecked`, `IntentInjected`, `AvailabilityQueried/AvailabilityError`, `AppointmentCreated/AppointmentError`, `CrmNoteAdded`. Logs em JSON estruturado no stdout, mesmo padrão do `logRagEvent`.
+
+### Novos arquivos (26 arquivos criados/modificados)
+
+Criados: `supabase/migrations/036_calendar_scheduling.sql`, `src/lib/calendar/types.ts`, `src/lib/calendar/admin-client.ts`, `src/lib/calendar/logger.ts`, `src/lib/calendar/calendar-settings.ts`, `src/lib/calendar/business-hours.ts`, `src/lib/calendar/providers/outlook/oauth.ts`, `src/lib/calendar/providers/outlook/client.ts`, `src/lib/calendar/providers/outlook/adapter.ts`, `src/lib/calendar/registry.ts`, `src/lib/calendar/index.ts`, `src/lib/ai/scheduling-assistant.ts`, `src/app/api/calendar/oauth/authorize/route.ts`, `src/app/api/calendar/oauth/callback/route.ts`, `src/app/api/calendar/settings/route.ts`, `src/app/api/settings/business-hours/route.ts`, `src/app/api/calendar/availability/route.ts`, `src/app/api/calendar/appointments/route.ts`, `src/components/settings/calendar-settings-panel.tsx`, `src/components/settings/business-hours-panel.tsx`, `src/components/settings/calendar-section.tsx`.
+
+Modificados: `src/components/settings/settings-sections.ts` (nova seção `agenda`), `src/app/(dashboard)/settings/page.tsx` (`CalendarSection`), `src/lib/ai/inbox-assistant.ts` (`getSchedulingContext` no `Promise.all`), `src/app/api/public/site-widget/message/route.ts` (idem), `src/types/index.ts` (tipos de calendário).
+
+`npm run typecheck`/`lint`/`build` limpos (0 erros, 0 warnings novos). **Código não commitado ainda** — aguardando ações manuais antes do deploy.
+
+### Pendências (ações manuais necessárias antes do deploy)
+1. Registrar Azure App em portal.azure.com: tipo `consumers`, URI de redirecionamento `https://www.wavon.com.br/api/calendar/oauth/callback`, escopos `Calendars.ReadWrite` + `User.Read` (delegado). Gerar `CLIENT_ID` e `CLIENT_SECRET`.
+2. Configurar na Vercel Dashboard: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL=https://www.wavon.com.br`
+3. Aplicar `supabase/migrations/036_calendar_scheduling.sql` no SQL Editor do Supabase
+4. Fazer commit + push + deploy (`npx vercel --prod`)
+5. Validar em produção: Configurações → Agenda → conectar Outlook → configurar horário comercial → testar IA fora do horário → testar botão "Agendar" no Inbox
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 a 7 fechadas, sem pendências bloqueantes — migrations `024` a `034` aplicadas em produção. Fase 7 (RAG) validada de ponta a ponta em produção real (ver seção acima). Fase 7.1 (estabilização do RAG) implementada — migration `035` ainda **não aplicada** em produção (pendência não-bloqueante; o RAG da Fase 7 continua funcionando normalmente sem ela, só sem o progresso granular/observabilidade novos até ser aplicada).
+Fases 2 a 7.1 fechadas e em produção — migrations `024` a `035` aplicadas. Fase 7.2 (Agendamento Inteligente) implementada localmente (código completo, build limpo) — aguardando Azure App + migration `036` + Vercel env vars para commit/deploy/validação em produção.
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
@@ -192,10 +261,11 @@ WAVON em produção (`www.wavon.com.br`) com:
 - IA integrada via OpenAI (Responses API), chave própria por conta, criptografada
 - Assistente IA no Inbox: sugerir resposta, resumir conversa, classificar lead
 - Base de Conhecimento da IA: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
-- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`), pronto para outros consumidores futuros (automações, agentes, API pública, novos canais)
+- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`), pronto para outros consumidores futuros
 - Widget de atendimento IA no site público, conversas chegando ao Inbox normal, IA usando a chave OpenAI da própria conta
+- **Agendamento Inteligente (Fase 7.2)**: implementado localmente — CalendarProvider abstraction, Outlook Calendar via Graph API, horário comercial DST-safe, IA oferece slots quando fora do horário, botão "Agendar" no Inbox, observabilidade completa — aguardando Azure App + migration `036` + env vars para entrar em produção
 
-Todas as migrations até `034` aplicadas em produção (`035`, da Fase 7.1, pendente de aplicação manual). Fase 7 validada de ponta a ponta com teste real (upload → embeddings → busca semântica → resposta correta da IA no Widget). Fase 7.1 implementada (progresso real, duplicidade não-bloqueante, observabilidade, metadados) — aguardando aplicação da migration `035` e teste real em produção para fechar.
+Todas as migrations até `035` aplicadas em produção. Migration `036` (Fase 7.2) criada, aguardando aplicação manual no Supabase.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

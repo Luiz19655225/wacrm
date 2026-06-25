@@ -12,6 +12,7 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { AiSection } from '@/components/settings/ai-section';
+import { CalendarSection } from '@/components/settings/calendar-section';
 import { TemplateManager } from '@/components/settings/template-manager';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
@@ -87,6 +88,7 @@ function SettingsPageInner() {
     appearance: <AppearancePanel />,
     whatsapp: <WhatsAppConfig />,
     ai: <AiSection />,
+    agenda: <CalendarSection />,
     templates: <TemplateManager />,
     'quick-replies': <QuickRepliesManager />,
     fields: <FieldsAndTagsPanel />,
