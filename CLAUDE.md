@@ -153,16 +153,16 @@ Implementação completa. **Objetivo**: permitir que cada empresa envie document
 6. **Best-effort e performance** — `searchRelevantChunks` nunca lança erro (falha de embedding, conta sem chave, erro do pgvector → degrada para "sem documentos", igual ao padrão já usado em `getAccountKnowledgeBase`); resultado limitado a 5 trechos e a um total de ~6000 caracteres, mesmo que a conta acumule centenas de documentos no futuro — o prompt não cresce sem controle.
 7. **Interface** — nova sub-aba "Documentos" em Configurações → IA (`ai-documents-panel.tsx`), depois de "Regras": lista com status, upload (síncrono — a resposta já vem com o resultado final, sem necessidade de polling), exclusão com confirmação. Escrita visível só para `admin`/`owner` (`canEditSettings`).
 8. **Escopo desta fase, deliberadamente** — sem OCR, sem fila/worker, sem processamento assíncrono, sem versionamento de documentos, sem busca híbrida/re-ranking, sem múltiplos modelos de embedding simultâneos. Fica só: Upload → Extração → Chunking → Embeddings → Busca vetorial → Integração na IA.
-9. **Não testado nesta rodada** (mesma limitação das Fases 5/6 — sem chave OpenAI real disponível no ambiente de implementação): não foi possível confirmar visualmente um upload real gerando embeddings/resposta da IA. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos; testes unitários novos de `chunkText` (6/6) passando.
-
-**Pendência imediata**: aplicar `supabase/migrations/034_ai_rag_documents.sql` manualmente no SQL Editor do Supabase — sem ela, a aba "Documentos" e o upload dão erro de tabela/função inexistente.
+9. `npm run typecheck`, `npm run lint` (0 erros, mesmos 19 warnings pré-existentes) e `npm run build` passaram limpos; testes unitários novos de `chunkText` (6/6) passando.
+10. **Auditoria técnica final (antes do push)** — revisão de RLS/policies, rotas, RAG e performance. Achados corrigidos no commit `9cadcf2`: (a) `application/msword`/`.doc`, `.ppt`, `.xls` eram aceitos pela validação mas o `officeparser` não suporta formatos binários legados (só OOXML) — todo upload desses formatos falharia silenciosamente na extração; removidos de `file-type.ts`, do bucket e do `accept` do input; (b) `suggestReply` e o widget buscavam a base de conhecimento estruturada e o RAG (e, no widget, também o histórico) **sequencialmente** — paralelizado com `Promise.all`; (c) reforço de defesa em profundidade no `DELETE` de documentos (filtro por `account_id` também na query de exclusão, não só na leitura prévia).
+11. **Migration `034` aplicada em produção pelo usuário** no SQL Editor do Supabase (mesma rotina manual de sempre) — confirmada via teste funcional real (ver item 12).
+12. **Validado em produção real (25/06/2026)** — teste de ponta a ponta com documento real: TXT contendo "O código secreto do WAVON é 987654" enviado pela aba Documentos → status `ready`, chunk + embedding criados → pergunta enviada pelo Widget do site ("Qual é o código secreto do WAVON?") → **IA respondeu corretamente "O código secreto do WAVON é 987654."**, citando o conteúdo do documento. Confirma upload, extração, chunking, embeddings, pgvector/busca semântica e integração com o Widget funcionando de ponta a ponta em produção real.
+13. **Bug encontrado e corrigido durante essa validação (não era do RAG)** — a primeira tentativa do teste deu erro 403 "Não foi possível validar sua identidade nesta conversa" na **segunda** mensagem da mesma conversa do Widget, antes de qualquer lógica de IA/RAG rodar (`src/app/api/public/site-widget/message/route.ts`). Causa: a checagem de identidade de mensagens de continuação comparava `normalizePhone(contact.phone)` com igualdade estrita, mas o contato pode ter sido resolvido por `findOrCreateContact`/`findExistingContact` usando a comparação **tolerante** `phonesMatch` (tolerante a prefixo de tronco) — as duas checagens podiam divergir para o mesmo número em formatos diferentes. Corrigido trocando para `phonesMatch` também na checagem de continuação, deixando as duas etapas consistentes sobre o que significa "mesmo número". Commit `ef81777`, validado em produção com o teste do item 12 (a segunda mensagem da conversa de teste retornou 200 e chegou à IA normalmente).
 
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 a 6 fechadas, sem pendências bloqueantes — migrations `024` a `033` aplicadas em produção.
-
-Fase 7 (RAG) implementada nesta sessão — pendência imediata: aplicar a migration `034_ai_rag_documents.sql` (ver seção acima).
+Fases 2 a 7 fechadas, sem pendências bloqueantes — migrations `024` a `034` aplicadas em produção. Fase 7 (RAG) validada de ponta a ponta em produção real (ver seção acima).
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
@@ -180,7 +180,7 @@ WAVON em produção (`www.wavon.com.br`) com:
 - Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`), pronto para outros consumidores futuros (automações, agentes, API pública, novos canais)
 - Widget de atendimento IA no site público, conversas chegando ao Inbox normal, IA usando a chave OpenAI da própria conta
 
-Migrations até `033` aplicadas em produção; `034` (Fase 7) pronta, aguardando aplicação manual do usuário.
+Todas as migrations até `034` aplicadas em produção. Fase 7 validada de ponta a ponta com teste real (upload → embeddings → busca semântica → resposta correta da IA no Widget).
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

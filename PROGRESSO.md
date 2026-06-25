@@ -50,21 +50,21 @@ Pendências não-bloqueantes:
 - [x] Prompt do assistente simplificado — campo "Instruções personalizadas" passou a cuidar só do comportamento da IA, não de fatos (que vêm da Base de Conhecimento)
 
 ## Fase 7 — Base de Conhecimento Inteligente (RAG)
-✅ Implementada (commit pendente nesta sessão) — pendência imediata: aplicar a migration `034_ai_rag_documents.sql` no Supabase
+✅ Implementada, auditada e **validada de ponta a ponta em produção real** (commits `805044c`, `9cadcf2`, `ef81777`)
 
-- [x] Migration `034` — extensão `vector`, tabelas `ai_documents`/`ai_document_chunks`, índice HNSW, função `match_ai_document_chunks()`, bucket privado `ai-knowledge-documents`
+- [x] Migration `034` aplicada em produção — extensão `vector`, tabelas `ai_documents`/`ai_document_chunks`, índice HNSW, função `match_ai_document_chunks()`, bucket privado `ai-knowledge-documents`
 - [x] Serviço RAG desacoplado (`src/lib/ai/rag/`) — `extractText`, `chunkText` (testado), `generateEmbeddings`, `storeChunks`, `searchRelevantChunks`, `buildRagPromptBlock`, `processDocument`; reutilizável por qualquer feature futura, não só o Inbox
 - [x] `createOpenAIEmbeddings()` centralizada em `openai-client.ts` (`text-embedding-3-small`)
 - [x] Upload (`POST /api/ai/knowledge-documents`, admin-only, processamento síncrono) + exclusão (`DELETE .../[id]`)
 - [x] Aba "Documentos" em Configurações → IA
 - [x] Integração no prompt: Perfil + Produtos + FAQ + Objetivos + Regras + **Documentos relevantes** + Instruções personalizadas + Histórico — só em `suggestReply` (Inbox) e no widget do site
 - [x] `npm run typecheck`/`lint`/`build` limpos; testes de `chunkText` (6/6)
-- [ ] Validação end-to-end com chave OpenAI real (upload real → embeddings → resposta citando o documento) — depende do usuário, mesma limitação das Fases 5/6
-- [ ] Aplicar `034_ai_rag_documents.sql` no SQL Editor do Supabase
+- [x] Auditoria técnica final — corrigidos: rejeição de `.doc`/`.ppt`/`.xls` (formato não suportado pelo `officeparser`), paralelização das buscas de IA (latência), defesa em profundidade no `DELETE`
+- [x] **Teste real end-to-end em produção**: documento TXT com fato exclusivo ("código secreto do WAVON é 987654") → upload → status `ready` → pergunta no Widget → IA respondeu corretamente citando o documento
+- [x] Bug encontrado e corrigido durante a validação: 403 falso-positivo na 2ª mensagem de uma conversa do Widget (checagem de identidade usava comparação estrita de telefone, inconsistente com a comparação tolerante usada para resolver o contato) — corrigido com `phonesMatch`, mesma função já usada no resto do projeto
 
 ## Status geral
-Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG), Widget IA no site. Migrations até `033` aplicadas; `034` pronta, aguardando aplicação manual.
+Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG, validado em produção real), Widget IA no site. Todas as migrations até `034` aplicadas.
 
 ## Próximo a planejar
-- Validar Fase 7 em produção com chave OpenAI real, depois aplicar `034` (ver acima).
 - Enforcement real de billing por `access_status` (bloquear CRM/automações) — fase própria, não iniciar sem aprovação explícita.
