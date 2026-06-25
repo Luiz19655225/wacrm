@@ -62,7 +62,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     await db.storage.from(BUCKET).remove([document.storage_path])
 
-    const { error: deleteError } = await db.from('ai_documents').delete().eq('id', id)
+    const { error: deleteError } = await db
+      .from('ai_documents')
+      .delete()
+      .eq('id', id)
+      .eq('account_id', account.accountId)
     if (deleteError) {
       console.error('[knowledge-documents DELETE] failed:', deleteError)
       return NextResponse.json({ error: 'Falha ao excluir o documento.' }, { status: 500 })

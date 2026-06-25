@@ -196,11 +196,18 @@ export async function POST(request: Request) {
     let replyText = FALLBACK_REPLY
     const aiSettings = await getAccountAiSettings(ownerAccountId)
     if (aiSettings) {
-      const { data: history } = await db
-        .from('messages')
-        .select('sender_type, content_type, content_text')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+      // Three independent lookups — none depends on another's result —
+      // run them concurrently rather than one after the other on the
+      // visitor's request path.
+      const [{ data: history }, knowledgeBase, relevantChunks] = await Promise.all([
+        db
+          .from('messages')
+          .select('sender_type, content_type, content_text')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true }),
+        getAccountKnowledgeBase(ownerAccountId),
+        searchRelevantChunks(ownerAccountId, aiSettings.apiKey, message),
+      ])
 
       const visitorName = contact?.name || name || 'Visitante'
       const transcript = (history ?? [])
@@ -212,10 +219,8 @@ export async function POST(request: Request) {
         })
         .join('\n')
 
-      const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(ownerAccountId))
-      const ragBlock = buildRagPromptBlock(
-        await searchRelevantChunks(ownerAccountId, aiSettings.apiKey, message),
-      )
+      const knowledgeBlock = buildKnowledgeBasePromptBlock(knowledgeBase)
+      const ragBlock = buildRagPromptBlock(relevantChunks)
 
       const instructions = [
         'Você é o atendente virtual no site público de uma empresa que usa o CRM WAVON.',

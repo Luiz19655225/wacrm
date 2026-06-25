@@ -25,7 +25,7 @@ import {
 import { SettingsPanelHead } from './settings-panel-head';
 import type { AiDocument } from '@/types';
 
-const ACCEPTED_EXTENSIONS = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt';
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.pptx,.xlsx,.csv,.txt';
 
 const STATUS_LABEL: Record<AiDocument['status'], string> = {
   processing: 'Processando',

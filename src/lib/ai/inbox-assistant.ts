@@ -80,11 +80,16 @@ export async function suggestReply(
   const settings = await getAccountAiSettings(args.accountId)
   if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
 
-  const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
   const ragQuery = lastCustomerMessage(args.messages)
-  const ragBlock = ragQuery
-    ? buildRagPromptBlock(await searchRelevantChunks(args.accountId, settings.apiKey, ragQuery))
-    : ''
+  // Independent lookups (structured knowledge base vs. document
+  // search) — run them concurrently instead of one after the other,
+  // this is on the latency path of a button the agent is waiting on.
+  const [knowledgeBase, relevantChunks] = await Promise.all([
+    getAccountKnowledgeBase(args.accountId),
+    ragQuery ? searchRelevantChunks(args.accountId, settings.apiKey, ragQuery) : Promise.resolve([]),
+  ])
+  const knowledgeBlock = buildKnowledgeBasePromptBlock(knowledgeBase)
+  const ragBlock = buildRagPromptBlock(relevantChunks)
   const transcript = buildTranscript(args.messages, args.contactName)
   const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock, ragBlock)}\n\nSua tarefa: sugerir a PRÓXIMA mensagem que o atendente deve enviar ao cliente, considerando a conversa abaixo. Responda APENAS com o texto da mensagem sugerida — sem aspas, sem rótulos, sem explicações.`
 
