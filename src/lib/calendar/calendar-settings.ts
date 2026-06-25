@@ -1,6 +1,6 @@
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 import { supabaseAdmin } from './admin-client'
-import type { CalendarSettingsRow, ResolvedCalendarSettings } from './types'
+import type { CalendarProviderType, CalendarSettingsRow, ResolvedCalendarSettings } from './types'
 
 export async function getAccountCalendarSettings(
   accountId: string,
@@ -23,7 +23,7 @@ export async function getAccountCalendarSettings(
 
     return {
       id: row.id,
-      providerType: row.provider_type as 'OUTLOOK',
+      providerType: row.provider_type as CalendarProviderType,
       accessToken,
       refreshToken,
       tokenExpiresAt: row.token_expires_at ? new Date(row.token_expires_at) : null,
@@ -41,6 +41,7 @@ export async function getAccountCalendarSettings(
 
 export async function upsertCalendarTokens(args: {
   accountId: string
+  providerType: CalendarProviderType
   accessToken: string
   refreshToken: string | null
   expiresAt: Date | null
@@ -59,6 +60,7 @@ export async function upsertCalendarTokens(args: {
     await supabaseAdmin()
       .from('calendar_settings')
       .update({
+        provider_type: args.providerType,
         access_token_encrypted: accessTokenEncrypted,
         refresh_token_encrypted: refreshTokenEncrypted,
         token_expires_at: args.expiresAt?.toISOString() ?? null,
@@ -71,7 +73,7 @@ export async function upsertCalendarTokens(args: {
       .from('calendar_settings')
       .insert({
         account_id: args.accountId,
-        provider_type: 'OUTLOOK',
+        provider_type: args.providerType,
         access_token_encrypted: accessTokenEncrypted,
         refresh_token_encrypted: refreshTokenEncrypted,
         token_expires_at: args.expiresAt?.toISOString() ?? null,

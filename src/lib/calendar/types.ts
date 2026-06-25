@@ -1,4 +1,4 @@
-export type CalendarProviderType = 'OUTLOOK'
+export type CalendarProviderType = 'OUTLOOK' | 'GOOGLE'
 export type AppointmentStatus = 'scheduled' | 'cancelled' | 'completed'
 
 // ─── Slots ────────────────────────────────────────────────────────────────────

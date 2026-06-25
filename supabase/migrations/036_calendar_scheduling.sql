@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS calendar_settings (
   account_id               UUID        NOT NULL UNIQUE
                              REFERENCES accounts(id) ON DELETE CASCADE,
   provider_type            TEXT        NOT NULL
-                             CHECK (provider_type IN ('OUTLOOK')),
+                             CHECK (provider_type IN ('OUTLOOK', 'GOOGLE')),
   -- OAuth tokens — AES-256-GCM encrypted (same as ai_settings.api_key_encrypted)
   access_token_encrypted   TEXT        NOT NULL,
   refresh_token_encrypted  TEXT,
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS calendar_appointments (
                         REFERENCES conversations(id) ON DELETE SET NULL,
   contact_id          UUID
                         REFERENCES contacts(id) ON DELETE SET NULL,
-  provider_type       TEXT        NOT NULL CHECK (provider_type IN ('OUTLOOK')),
+  provider_type       TEXT        NOT NULL CHECK (provider_type IN ('OUTLOOK', 'GOOGLE')),
   external_event_id   TEXT,
   title               TEXT        NOT NULL,
   start_at            TIMESTAMPTZ NOT NULL,

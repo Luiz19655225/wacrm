@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/calendar/admin-client'
 import { updateCalendarSettings } from '@/lib/calendar/calendar-settings'
 import { logCalendarEvent, CalendarLogEvent } from '@/lib/calendar/logger'
 import { isMicrosoftConfigured } from '@/lib/calendar/providers/outlook/oauth'
+import { isGoogleConfigured } from '@/lib/calendar/providers/google/oauth'
 
 /**
  * GET /api/calendar/settings
@@ -28,6 +29,7 @@ export async function GET() {
     return NextResponse.json({
       connected: !!data,
       microsoft_configured: isMicrosoftConfigured(),
+      google_configured: isGoogleConfigured(),
       provider_type: data?.provider_type ?? null,
       calendar_email: data?.calendar_email ?? null,
       timezone: data?.timezone ?? 'America/Sao_Paulo',

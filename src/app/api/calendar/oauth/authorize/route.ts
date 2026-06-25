@@ -8,12 +8,11 @@ import { resolveAccountId } from '@/lib/ai/route-helpers'
 /**
  * GET /api/calendar/oauth/authorize
  *
- * Initiates the Microsoft OAuth flow. Encodes the authenticated
- * account's ID into the `state` parameter (encrypted) so the callback
- * can associate the tokens without a server-side session store.
+ * Legacy Microsoft-only OAuth entry point — kept for backward compatibility.
+ * Prefer /api/calendar/connect?provider=outlook for new code.
  *
- * The browser navigates here directly; the response is a redirect to
- * Microsoft's authorization endpoint.
+ * Encodes { accountId, provider: 'OUTLOOK' } in the state param so the
+ * shared callback route works correctly.
  */
 export async function GET() {
   if (!isMicrosoftConfigured()) {
@@ -42,10 +41,10 @@ export async function GET() {
       )
     }
 
-    const state = encrypt(accountId)
+    const state = encrypt(JSON.stringify({ accountId, provider: 'OUTLOOK' }))
     const url = getAuthorizationUrl(state)
 
-    logCalendarEvent(CalendarLogEvent.OAuthStarted, { accountId })
+    logCalendarEvent(CalendarLogEvent.OAuthStarted, { accountId, provider: 'OUTLOOK' })
 
     return NextResponse.redirect(url)
   } catch (err) {
