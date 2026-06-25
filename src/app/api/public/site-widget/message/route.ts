@@ -11,7 +11,7 @@ import { getAccountAiSettings, logAiUsage } from '@/lib/ai/ai-settings'
 import { getAccountKnowledgeBase, buildKnowledgeBasePromptBlock } from '@/lib/ai/knowledge-base'
 import { searchRelevantChunks, buildRagPromptBlock } from '@/lib/ai/rag'
 import { createOpenAIResponse } from '@/lib/ai/openai-client'
-import { normalizePhone, isValidE164 } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, isValidE164, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
 
 // ------------------------------------------------------------
@@ -123,9 +123,16 @@ export async function POST(request: Request) {
 
     // Follow-up authz: the phone supplied must match the conversation's
     // own contact — stops someone guessing/sharing a conversation_id
-    // from posting into a stranger's thread.
+    // from posting into a stranger's thread. Uses phonesMatch (trunk-
+    // prefix tolerant), the same definition of "same number" that
+    // findOrCreateContact/findExistingContact already use to resolve
+    // this very contact — a strict digit-for-digit comparison here
+    // would reject a legitimate visitor whenever the contact was
+    // originally resolved via that fuzzy match (e.g. an existing
+    // contact found by last-8-digit suffix, stored in a different
+    // format than what this request's phone normalizes to).
     if (existingConversationId) {
-      if (!contact?.phone || normalizePhone(contact.phone) !== phone) {
+      if (!contact?.phone || !phonesMatch(contact.phone, phone)) {
         return NextResponse.json(
           { error: 'Não foi possível validar sua identidade nesta conversa.' },
           { status: 403 },
