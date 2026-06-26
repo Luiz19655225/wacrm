@@ -181,6 +181,11 @@ function findNextOpenDescription(
  * Given a list of busy intervals from the calendar provider and the
  * account's business hours, return up to `maxSlots` free time slots
  * within the next `lookAheadDays` days, each of `durationMinutes` length.
+ *
+ * `sampleIntervalMinutes` controls how far apart candidate start times are
+ * checked. Defaults to `durationMinutes` (back-to-back slots). Use a larger
+ * value (e.g. 60) to spread samples across the day so the AI sees options
+ * from morning AND afternoon instead of only the first N consecutive slots.
  */
 export function computeAvailableSlots(args: {
   busyIntervals: { start: Date; end: Date }[]
@@ -190,6 +195,7 @@ export function computeAvailableSlots(args: {
   from?: Date
   lookAheadDays?: number
   maxSlots?: number
+  sampleIntervalMinutes?: number
 }): TimeSlot[] {
   const {
     busyIntervals,
@@ -199,6 +205,7 @@ export function computeAvailableSlots(args: {
     from = new Date(),
     lookAheadDays = 7,
     maxSlots = 3,
+    sampleIntervalMinutes = durationMinutes,
   } = args
 
   if (businessHours.length === 0) return []
@@ -206,8 +213,8 @@ export function computeAvailableSlots(args: {
   const endBound = new Date(from.getTime() + lookAheadDays * 24 * 60 * 60_000)
   const slots: TimeSlot[] = []
 
-  // Align start to next full slot boundary (round up to durationMinutes)
-  const step = durationMinutes * 60_000
+  // Align start to next sampleInterval boundary (round up)
+  const step = sampleIntervalMinutes * 60_000
   let cursor = new Date(Math.ceil(from.getTime() / step) * step)
   // Add a 15-minute buffer from now so we don't offer slots in the past
   cursor = new Date(Math.max(cursor.getTime(), from.getTime() + 15 * 60_000))

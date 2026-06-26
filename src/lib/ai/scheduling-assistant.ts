@@ -89,7 +89,8 @@ export async function getSchedulingContext(
       timezone,
       from: now,
       lookAheadDays: 7,
-      maxSlots: 3,
+      maxSlots: 6,
+      sampleIntervalMinutes: 60,  // spread across the day (morning + afternoon)
     })
 
     logCalendarEvent(CalendarLogEvent.IntentInjected, {
@@ -121,13 +122,17 @@ function buildOutOfHoursBlock(closedLine: string, slots: TimeSlot[]): string {
     lines.push(
       '',
       'Se o cliente demonstrar intenção comercial (orçamento, reunião, demonstração,',
-      'contratação, suporte especializado), ofereça os seguintes horários disponíveis',
-      'para um atendimento humano presencial ou por videoconferência:',
+      'contratação, suporte especializado), ajude-o a agendar um atendimento.',
       '',
+      'Horários disponíveis confirmados na agenda:',
       ...slots.map((s, i) => `  ${i + 1}. ${s.label}`),
       '',
-      'Informe que após o cliente escolher um horário, a equipe confirmará o agendamento.',
-      'Não invente outros horários além dos listados acima.',
+      'Instruções para tratar o horário pedido pelo cliente:',
+      '- Se o cliente pedir um horário específico E ele estiver na lista acima: confirme',
+      '  a disponibilidade e informe que a equipe formalizará o agendamento.',
+      '- Se o horário pedido NÃO estiver na lista: informe que aquele horário específico',
+      '  não está disponível e ofereça as opções da lista como alternativas.',
+      '- Nunca confirme nem invente horários que não estejam na lista acima.',
     )
   }
 
