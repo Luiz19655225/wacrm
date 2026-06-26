@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     try {
       const parsed = JSON.parse(raw) as { accountId: string; provider: string }
       accountId = parsed.accountId
-      provider  = parsed.provider as CalendarProviderType
+      provider  = parsed.provider.toUpperCase() as CalendarProviderType
     } catch {
       // Backward-compat: plain UUID from the old authorize route
       accountId = raw

@@ -15,23 +15,25 @@ import { getAuthorizationUrl, isMicrosoftConfigured } from '@/lib/calendar/provi
  * and know which provider to use for the token exchange.
  */
 export async function GET(request: NextRequest) {
-  const provider = request.nextUrl.searchParams.get('provider') ?? 'google'
+  const rawProvider = (request.nextUrl.searchParams.get('provider') ?? 'google').toUpperCase()
 
-  if (provider !== 'google' && provider !== 'outlook') {
+  if (rawProvider !== 'GOOGLE' && rawProvider !== 'OUTLOOK') {
     return NextResponse.json(
       { error: 'Parâmetro provider inválido. Use "google" ou "outlook".' },
       { status: 400 },
     )
   }
 
-  if (provider === 'google' && !isGoogleConfigured()) {
+  const provider = rawProvider as 'GOOGLE' | 'OUTLOOK'
+
+  if (provider === 'GOOGLE' && !isGoogleConfigured()) {
     return NextResponse.json(
       { error: 'GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET não estão configurados.' },
       { status: 503 },
     )
   }
 
-  if (provider === 'outlook' && !isMicrosoftConfigured()) {
+  if (provider === 'OUTLOOK' && !isMicrosoftConfigured()) {
     return NextResponse.json(
       { error: 'MICROSOFT_CLIENT_ID e MICROSOFT_CLIENT_SECRET não estão configurados.' },
       { status: 503 },
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
     logCalendarEvent(CalendarLogEvent.OAuthStarted, { accountId, provider })
 
     const authUrl =
-      provider === 'google'
+      provider === 'GOOGLE'
         ? getGoogleAuthorizationUrl(state)
         : getAuthorizationUrl(state)
 
