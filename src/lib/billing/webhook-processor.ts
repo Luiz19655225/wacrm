@@ -116,6 +116,9 @@ async function markSubscriptionCanceled(accountId: string): Promise<ProcessBilli
       subscription_status: 'canceled',
       access_status: 'canceled',
       canceled_at: new Date().toISOString(),
+      // Clear grace_ends_at so a prior past_due grace window doesn't
+      // linger as stale data after cancellation supersedes it.
+      grace_ends_at: null,
     })
     .eq('account_id', accountId);
   if (error) {
