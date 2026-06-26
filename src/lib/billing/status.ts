@@ -161,6 +161,13 @@ export function normalizeAsaasSubscriptionStatus(
  * the raw value for any event we don't explicitly recognize yet —
  * so an unmapped event is still recorded for later analysis instead
  * of being dropped.
+ *
+ * Asaas subscription cancellation vocabulary:
+ *   SUBSCRIPTION_INACTIVATED — subscription was inactivated/canceled
+ *     (status becomes INACTIVE). This is the canonical cancel event.
+ *   SUBSCRIPTION_DELETED — subscription was permanently deleted.
+ *     Also terminates access; mapped to the same internal type.
+ * Note: SUBSCRIPTION_CANCELED does not exist in the Asaas API.
  */
 export function normalizeAsaasEventType(rawEvent: string): string {
   const known: Record<string, string> = {
@@ -169,7 +176,8 @@ export function normalizeAsaasEventType(rawEvent: string): string {
     PAYMENT_OVERDUE: 'payment_overdue',
     PAYMENT_DELETED: 'payment_deleted',
     PAYMENT_REFUNDED: 'payment_refunded',
-    SUBSCRIPTION_CANCELED: 'subscription_canceled',
+    SUBSCRIPTION_INACTIVATED: 'subscription_canceled',
+    SUBSCRIPTION_DELETED: 'subscription_canceled',
   };
   return known[rawEvent] ?? rawEvent.toLowerCase();
 }
