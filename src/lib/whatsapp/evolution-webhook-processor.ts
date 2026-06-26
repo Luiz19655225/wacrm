@@ -249,15 +249,6 @@ async function handleMessagesUpsert(
   } | undefined
 
   const key = payload?.key
-  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
-  // stable in production (Fase 3 follow-up).
-  console.log('[evolution webhook][diag] messages.upsert payload:', {
-    accountId: connection.account_id,
-    remoteJid: key?.remoteJid,
-    messageId: key?.id,
-    fromMe: key?.fromMe,
-    pushName: payload?.pushName,
-  })
 
   if (!key?.id || !key.remoteJid) {
     console.warn('[evolution webhook] messages.upsert missing key.id/remoteJid, ignored')
@@ -266,10 +257,7 @@ async function handleMessagesUpsert(
   // Our own outbound message, echoed back by Evolution — already
   // recorded by send/route.ts when we sent it. Recording it again here
   // would duplicate it as an inbound 'customer' message.
-  if (key.fromMe) {
-    console.log('[evolution webhook][diag] messages.upsert is fromMe — echo of our own send, ignored')
-    return
-  }
+  if (key.fromMe) return
 
   const isGroup = key.remoteJid.endsWith('@g.us')
   const phone = key.remoteJid
@@ -287,13 +275,6 @@ async function handleMessagesUpsert(
     phone,
     displayName,
   )
-  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
-  // stable in production (Fase 3 follow-up).
-  console.log('[evolution webhook][diag] findOrCreateContact result:', {
-    success: !!contactOutcome,
-    contactId: contactOutcome?.contact?.id,
-    wasCreated: contactOutcome?.wasCreated,
-  })
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
 
@@ -303,14 +284,9 @@ async function handleMessagesUpsert(
     contactRecord.id,
     connection.id,
   )
-  console.log('[evolution webhook][diag] findOrCreateConversation result:', {
-    success: !!conversation,
-    conversationId: conversation?.id,
-  })
   if (!conversation) return
 
   const { contentText, contentType } = parseEvolutionMessageContent(payload?.message)
-  console.log('[evolution webhook][diag] parsed message content:', { contentType, contentText })
 
   let mediaUrl: string | null = null
   const mediaKey = payload?.message ? findMediaMessageKey(payload.message) : null
@@ -320,10 +296,6 @@ async function handleMessagesUpsert(
       connection.external_id,
       payload,
     )
-    console.log('[evolution webhook][diag] media download result:', {
-      mediaKey,
-      success: !!mediaUrl,
-    })
   }
 
   const timestampRaw = payload?.messageTimestamp
@@ -365,12 +337,6 @@ async function handleMessagesUpsert(
     console.error('[evolution webhook] insert message failed:', msgError.message)
     return
   }
-  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
-  // stable in production (Fase 3 follow-up).
-  console.log('[evolution webhook][diag] message insert result:', {
-    success: !msgError,
-    duplicateDelivery: !!msgError && isUniqueViolation(msgError),
-  })
   if (msgError) return // duplicate delivery, already recorded — skip downstream side-effects
 
   const { error: convError } = await supabaseAdmin()
@@ -432,13 +398,6 @@ export interface EvolutionWebhookPayload {
  * time; this must not start rejecting webhook deliveries on a 200).
  */
 export async function processEvolutionWebhookEvent(payload: EvolutionWebhookPayload): Promise<void> {
-  // TEMP DIAGNOSTIC LOG — remove once inbound ingestion is confirmed
-  // stable in production (Fase 3 follow-up).
-  console.log('[evolution webhook][diag] event received:', {
-    event: payload.event,
-    instance: payload.instance,
-  })
-
   if (!payload.instance) {
     console.warn('[evolution webhook] payload missing instance, ignored')
     return
