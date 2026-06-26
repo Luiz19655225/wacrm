@@ -66,8 +66,34 @@ export function AgendaPage() {
     try {
       const res = await fetch("/api/calendar/sync", { method: "POST" })
       if (!res.ok) throw new Error()
-      toast.success("Calendário sincronizado.")
+
+      type ProviderResult = { inserted: number; updated: number; errors: number }
+      const data = await res.json() as { success: boolean; results: Record<string, ProviderResult>; message?: string }
+
+      // No calendar connected
+      if (data.message && Object.keys(data.results).length === 0) {
+        toast.info("Nenhum calendário conectado. Configure em Configurações → Agenda.")
+        return
+      }
+
+      const providerResults = Object.values(data.results)
+      const totalErrors   = providerResults.reduce((sum, r) => sum + r.errors, 0)
+      const totalInserted = providerResults.reduce((sum, r) => sum + r.inserted, 0)
+      const totalUpdated  = providerResults.reduce((sum, r) => sum + r.updated, 0)
+
+      if (totalErrors > 0) {
+        toast.error("Erro ao acessar o Google Calendar. Reconecte sua agenda em Configurações → Agenda.")
+        return
+      }
+
       await loadAppointments(year, month)
+
+      const novidades = totalInserted + totalUpdated
+      if (novidades === 0) {
+        toast.success("Calendário sincronizado. Nenhuma novidade.")
+      } else {
+        toast.success(`Calendário sincronizado. ${totalInserted} novo(s), ${totalUpdated} atualizado(s).`)
+      }
     } catch {
       toast.error("Erro ao sincronizar calendário.")
     } finally {
