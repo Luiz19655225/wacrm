@@ -39,7 +39,7 @@ import { buildLastMessagePreview } from '@/lib/whatsapp/message-preview'
 // ------------------------------------------------------------
 
 const FALLBACK_REPLY =
-  'Recebemos sua mensagem! Em breve alguém da nossa equipe responde por aqui ou pelo WhatsApp informado.'
+  'Olá! Sou a WAVI, assistente virtual da equipe. Recebemos sua mensagem e em breve nossa equipe retorna pelo WhatsApp informado.'
 const RATE_LIMIT_PER_HOUR = 30
 
 interface ContactRef {
@@ -215,6 +215,8 @@ export async function POST(request: Request) {
     // falls back to a generic acknowledgement instead of an error.
     let replyText = FALLBACK_REPLY
     let availableSchedulingSlots: { startISO: string; endISO: string; label: string }[] = []
+    let hasSlotMarker = false
+    const SLOT_READY_MARKER = '[AGENDAR]'
     const aiSettings = await getAccountAiSettings(ownerAccountId)
     if (aiSettings) {
       // All independent lookups run concurrently (history, KB, RAG, scheduling).
@@ -245,8 +247,9 @@ export async function POST(request: Request) {
       const schedulingBlock = schedulingCtx.promptBlock ?? ''
 
       const instructions = [
-        'Você é o atendente virtual no site público de uma empresa que usa o CRM WAVON.',
+        'Você se chama WAVI, a assistente virtual da equipe WAVON. Nunca se refira a si mesmo como "bot", "robô" ou "IA".',
         'Um visitante está conversando com você pelo widget de chat do site. Responda em português do Brasil, de forma simpática, breve e profissional.',
+        'Ao se apresentar pela primeira vez, use: "Sou a WAVI, assistente virtual da equipe."',
         'Se a pergunta exigir um humano, diga que a equipe vai continuar o atendimento pelo WhatsApp informado.',
         knowledgeBlock ? `Use as informações abaixo sobre a empresa para responder com precisão:\n\n${knowledgeBlock}` : null,
         ragBlock ? `Use os trechos de documentos abaixo, se forem relevantes para a pergunta do visitante:\n\n${ragBlock}` : null,
@@ -266,6 +269,13 @@ export async function POST(request: Request) {
           input: transcript,
         })
         if (result.text.trim()) replyText = result.text.trim()
+        // Detect [AGENDAR] marker — set by the AI only when all 5 mandatory fields
+        // have been collected and it is about to present the available slots.
+        // Strip it before storing or returning so the user never sees it.
+        if (replyText.includes(SLOT_READY_MARKER)) {
+          hasSlotMarker = true
+          replyText = replyText.replace(SLOT_READY_MARKER, '').trim()
+        }
         await logAiUsage({
           accountId: ownerAccountId,
           feature: 'site_widget_reply',
@@ -305,17 +315,10 @@ export async function POST(request: Request) {
       })
       .eq('id', conversationId)
 
-    // Return available slots when the AI reply contains scheduling keywords —
-    // the widget renders slot-picker buttons only when this array is non-empty.
-    const SCHEDULING_KEYWORDS = [
-      'horário', 'horarios', 'agendar', 'agendamento', 'agenda',
-      'disponível', 'disponivel', 'disponíveis', 'disponiveis',
-      'reunião', 'reuniao', 'consulta', 'marcar',
-    ]
-    const replyLower = replyText.toLowerCase()
-    const hasSchedulingIntent = SCHEDULING_KEYWORDS.some((k) => replyLower.includes(k))
+    // Return slots only when the AI confirmed all 5 mandatory fields were collected
+    // by including [AGENDAR] in its response (stripped above before storage/return).
     const schedulingSlots =
-      hasSchedulingIntent && availableSchedulingSlots.length > 0
+      hasSlotMarker && availableSchedulingSlots.length > 0
         ? availableSchedulingSlots
         : undefined
 

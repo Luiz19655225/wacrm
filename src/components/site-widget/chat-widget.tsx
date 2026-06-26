@@ -61,22 +61,11 @@ const HIDDEN_PATH_PREFIXES = [
   '/join',
 ];
 
-const SCHEDULING_KEYWORDS = [
-  'horário', 'horarios', 'agendar', 'agendamento', 'agenda',
-  'disponível', 'disponivel', 'disponíveis', 'disponiveis',
-  'reunião', 'reuniao', 'consulta', 'atendimento', 'marcar',
-];
-
-function containsSchedulingKeyword(text: string): boolean {
-  const lower = text.toLowerCase();
-  return SCHEDULING_KEYWORDS.some((k) => lower.includes(k));
-}
-
 /**
- * Floating AI attendant for WAVON's own public site.
+ * Floating WAVI attendant for WAVON's own public site.
  * First message collects name + WhatsApp + email + message.
- * When the AI response contains scheduling keywords and the backend
- * returns available slots, slot-picker buttons appear inline.
+ * Slot-picker buttons appear only when the backend confirms all 5
+ * mandatory scheduling fields have been collected (via [AGENDAR] marker).
  */
 export function ChatWidget() {
   const pathname = usePathname();
@@ -173,11 +162,9 @@ export function ChatWidget() {
       });
       setConversationId(newConvId);
 
-      // Show slot picker when the AI response contains scheduling keywords
-      if (
-        data.scheduling_slots?.length &&
-        containsSchedulingKeyword(data.reply ?? '')
-      ) {
+      // Show slot picker only when backend confirms all 5 fields collected
+      // (backend strips [AGENDAR] marker and includes scheduling_slots only then)
+      if (data.scheduling_slots?.length) {
         setSchedulingSlots(data.scheduling_slots);
         setScheduleWhatsapp(phone.trim());
       }
@@ -246,8 +233,8 @@ export function ChatWidget() {
         <div className="flex h-[32rem] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
           <div className="flex items-center justify-between border-b border-border bg-primary px-4 py-3">
             <div>
-              <p className="text-sm font-semibold text-primary-foreground">Fale com a gente</p>
-              <p className="text-xs text-primary-foreground/80">Resposta rápida por IA</p>
+              <p className="text-sm font-semibold text-primary-foreground">WAVI</p>
+              <p className="text-xs text-primary-foreground/80">Assistente virtual da equipe</p>
             </div>
             <button
               type="button"
@@ -262,7 +249,7 @@ export function ChatWidget() {
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
             {messages.length === 0 ? (
               <p className="px-1 text-sm text-muted-foreground">
-                Olá! Me diga seu nome, WhatsApp, e-mail e como podemos ajudar.
+                Olá! Sou a WAVI, assistente virtual da equipe. Me diga seu nome, WhatsApp, e-mail e como podemos ajudar.
               </p>
             ) : (
               messages.map((m) => (

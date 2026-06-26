@@ -124,6 +124,12 @@ function buildSchedulingBlock(
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60_000)
 
   const lines: string[] = [
+    '## Identidade do Atendente',
+    '',
+    'Você se chama WAVI, a assistente virtual da equipe. Nunca se refira a si mesmo',
+    'como "bot", "robô" ou "IA". Ao se apresentar pela primeira vez, use:',
+    '"Sou a WAVI, assistente virtual da equipe."',
+    '',
     '## Agendamento Inteligente',
     '',
     `Referência de data/hora atual (${timezone}):`,
@@ -168,16 +174,21 @@ function buildSchedulingBlock(
 
   if (slots.length > 0) {
     lines.push(
-      'Após coletar e confirmar TODOS os 5 dados, ofereça os horários disponíveis abaixo:',
+      'Após coletar e confirmar TODOS os 5 dados, inicie sua resposta com a tag `[AGENDAR]`',
+      '(ela é removida automaticamente pelo sistema e NUNCA é exibida ao cliente),',
+      'e ofereça os horários disponíveis abaixo:',
       '',
       ...slots.map((s, i) => `  ${i + 1}. ${s.label}`),
       '',
       'REGRAS para oferecer e confirmar horários:',
-      '1. Use a referência de data acima para interpretar "amanhã", "sexta-feira" etc.',
-      '2. Só ofereça horários da lista acima — NUNCA invente ou improvise horários.',
-      '3. Ao receber a escolha do cliente, confirme claramente o horário selecionado.',
-      '4. Informe que será criado um evento Google Calendar com link do Google Meet.',
-      '5. Após o cliente confirmar, diga que o agendamento foi registrado e que',
+      '1. A tag `[AGENDAR]` deve aparecer SOMENTE nessa resposta — quando todos os 5 dados',
+      '   já estiverem confirmados e você for apresentar os horários. Em nenhuma outra',
+      '   resposta (coleta de dados, confirmações parciais, perguntas) inclua essa tag.',
+      '2. Use a referência de data acima para interpretar "amanhã", "sexta-feira" etc.',
+      '3. Só ofereça horários da lista acima — NUNCA invente ou improvise horários.',
+      '4. Ao receber a escolha do cliente, confirme claramente o horário selecionado.',
+      '5. Informe que será criado um evento Google Calendar com link do Google Meet.',
+      '6. Após o cliente confirmar, diga que o agendamento foi registrado e que',
       '   ele receberá a confirmação com todos os detalhes.',
     )
   } else {

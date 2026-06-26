@@ -243,6 +243,24 @@ Modificados: `src/components/settings/settings-sections.ts` (nova seção `agend
 4. Fazer commit + push + deploy (`npx vercel --prod`)
 5. Validar em produção: Configurações → Agenda → conectar Outlook → configurar horário comercial → testar IA fora do horário → testar botão "Agendar" no Inbox
 
+## Fase 7.3.1 — Identidade WAVI + Marcador `[AGENDAR]` (26/06/2026) — ✅ CONCLUÍDA
+
+Correção em cima da Fase 7.3. Dois problemas resolvidos na mesma rodada:
+
+1. **Bug: horários aparecendo antes da coleta dos dados** — a detecção via `SCHEDULING_KEYWORDS` disparava `scheduling_slots` na resposta assim que a IA mencionava qualquer palavra de agendamento (ex: "para **agendar** seu **horário**"), mesmo durante a coleta dos campos obrigatórios. Substituído por marcador semântico `[AGENDAR]`: a IA inclui o marcador **somente** na resposta em que apresenta os horários (quando os 5 campos já estão confirmados); o backend detecta, remove o marcador antes de armazenar/retornar (nunca é exibido), e só inclui `scheduling_slots` no JSON se o marcador estava presente; o widget exibe os slots apenas se `scheduling_slots` vier na resposta.
+
+2. **Identidade WAVI** — o atendente do widget se chama WAVI. Aplicado em: bloco "Identidade do Atendente" injetado no prompt da IA (`scheduling-assistant.ts`); instruções do backend (`message/route.ts`) e `FALLBACK_REPLY`; cabeçalho, subtítulo e mensagem de boas-vindas do widget (`chat-widget.tsx`). A IA nunca usa "bot", "robô" ou "IA" para se referir a si mesma.
+
+**Arquivos alterados (3)**: `src/lib/ai/scheduling-assistant.ts` (bloco de identidade WAVI + instrução do marcador `[AGENDAR]` com 6 regras de uso), `src/app/api/public/site-widget/message/route.ts` (WAVI no FALLBACK_REPLY e nas instructions; detecção/remoção de `[AGENDAR]`; `SCHEDULING_KEYWORDS` removido), `src/components/site-widget/chat-widget.tsx` (`SCHEDULING_KEYWORDS`/`containsSchedulingKeyword` removidos; trigger simplificado; cabeçalho/subtítulo/welcome com WAVI).
+
+`npm run typecheck` (0 erros), `npm run lint` (0 erros, 19 warnings pré-existentes) e `npm run build` (compilado com sucesso em 11.2s) limpos.
+
+Commit desta rodada: ver "Histórico de encerramentos" abaixo (entrada 26/06/2026 Fase 7.3.1).
+
+Bug de disponibilidade do slot das 14:00 também corrigido nesta sessão (rodada anterior ao commit desta fase): `sampleIntervalMinutes: 60 → 120` em `scheduling-assistant.ts` e `calendar/availability/route.ts`. Commit `0b5debd`, deploy `dpl_AmeoN6HubtjxKMCh2C12M6WpBYb7`.
+
+---
+
 ## Fase 7.3 — Agendamento Inteligente 2.0 (26/06/2026) — ✅ CONCLUÍDA e em produção (commit `b57694a`, deploy `dpl_AQXzE3F7gAhDUgvtFaQVbr2RUMx6`)
 
 Construída sobre a CalendarProvider abstraction da Fase 7.2. Objetivo: tornar o agendamento inteligente **universal** (IA sempre ativa, não só fora do horário) e **seguro** (nunca cria evento sem coleta completa dos 5 campos obrigatórios).
@@ -280,7 +298,6 @@ Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
 - Adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 mais abaixo) — não relacionada à Fase 3/4.
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
-- Bug a investigar: IA às vezes não oferece o slot das 14:00 mesmo quando livre — suspeita em `computeAvailableSlots` (`sampleIntervalMinutes: 60` + `maxSlots: 6`); verificar após validação do fluxo completo em produção.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`). Configurável por quem criar um Azure App Registration (instruções na Fase 7.2).
 
 ## Estado atual da plataforma (26/06/2026)
@@ -293,7 +310,7 @@ WAVON em produção (`www.wavon.com.br`) com:
 - Base de Conhecimento da IA: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
 - Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`)
 - Widget de atendimento IA no site público (coleta nome + WhatsApp + e-mail), conversas chegando ao Inbox normal
-- **Agendamento Inteligente 2.0 (Fase 7.3)**: IA sempre ativa para agendamento (não só fora do horário); coleta obrigatória de 5 campos; Google Calendar com Google Meet; endpoint público `/api/public/site-widget/schedule`; dialog 2 etapas no Inbox; picker inline no Widget — tudo em produção
+- **Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1)**: IA sempre ativa para agendamento; coleta obrigatória de 5 campos com marcador semântico `[AGENDAR]` (slots nunca aparecem antes dos dados); Google Calendar com Google Meet; endpoint público `/api/public/site-widget/schedule`; dialog 2 etapas no Inbox; picker inline no Widget; atendente WAVI — tudo em produção
 
 Todas as migrations até `036` aplicadas em produção.
 
