@@ -60,6 +60,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}))
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : ''
+    const email = typeof body.email === 'string' ? body.email.trim().slice(0, 254) : ''
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 2000) : ''
     const existingConversationId =
       typeof body.conversation_id === 'string' && body.conversation_id ? body.conversation_id : null
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convFetchError } = await db
       .from('conversations')
-      .select('id, account_id, contact_id, unread_count, contact:contacts(id, name, phone)')
+      .select('id, account_id, contact_id, unread_count, contact:contacts(id, name, phone, email)')
       .eq('id', conversationId)
       .eq('account_id', ownerAccountId)
       .maybeSingle()
@@ -121,6 +122,17 @@ export async function POST(request: Request) {
     }
 
     const contact = conversation.contact as unknown as ContactRef | null
+
+    // Persist email on the contact when supplied on the first message and not yet stored.
+    if (!existingConversationId && email && contact?.id) {
+      const contactEmail = (contact as unknown as { email?: string | null }).email
+      if (!contactEmail) {
+        db.from('contacts')
+          .update({ email, updated_at: new Date().toISOString() })
+          .eq('id', contact.id)
+          .then(null, () => null)
+      }
+    }
 
     // Follow-up authz: the phone supplied must match the conversation's
     // own contact — stops someone guessing/sharing a conversation_id
@@ -202,6 +214,7 @@ export async function POST(request: Request) {
     // contact/conversation/message already persisted above, so it
     // falls back to a generic acknowledgement instead of an error.
     let replyText = FALLBACK_REPLY
+    let availableSchedulingSlots: { startISO: string; endISO: string; label: string }[] = []
     const aiSettings = await getAccountAiSettings(ownerAccountId)
     if (aiSettings) {
       // All independent lookups run concurrently (history, KB, RAG, scheduling).
@@ -226,6 +239,7 @@ export async function POST(request: Request) {
         })
         .join('\n')
 
+      availableSchedulingSlots = schedulingCtx.slots
       const knowledgeBlock = buildKnowledgeBasePromptBlock(knowledgeBase)
       const ragBlock = buildRagPromptBlock(relevantChunks)
       const schedulingBlock = schedulingCtx.promptBlock ?? ''
@@ -291,7 +305,25 @@ export async function POST(request: Request) {
       })
       .eq('id', conversationId)
 
-    return NextResponse.json({ conversation_id: conversationId, reply: replyText })
+    // Return available slots when the AI reply contains scheduling keywords —
+    // the widget renders slot-picker buttons only when this array is non-empty.
+    const SCHEDULING_KEYWORDS = [
+      'horário', 'horarios', 'agendar', 'agendamento', 'agenda',
+      'disponível', 'disponivel', 'disponíveis', 'disponiveis',
+      'reunião', 'reuniao', 'consulta', 'marcar',
+    ]
+    const replyLower = replyText.toLowerCase()
+    const hasSchedulingIntent = SCHEDULING_KEYWORDS.some((k) => replyLower.includes(k))
+    const schedulingSlots =
+      hasSchedulingIntent && availableSchedulingSlots.length > 0
+        ? availableSchedulingSlots
+        : undefined
+
+    return NextResponse.json({
+      conversation_id: conversationId,
+      reply: replyText,
+      ...(schedulingSlots ? { scheduling_slots: schedulingSlots } : {}),
+    })
   } catch (error) {
     console.error('Error in /api/public/site-widget/message POST:', error)
     return NextResponse.json({ error: 'Falha ao enviar mensagem. Tente novamente.' }, { status: 500 })

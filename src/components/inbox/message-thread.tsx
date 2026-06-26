@@ -224,6 +224,10 @@ export function MessageThread({
   // ---- Scheduling dialog --------------------------------------------------
   interface AvailableSlot { startISO: string; endISO: string; label: string }
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleStep, setScheduleStep] = useState<'form' | 'slots'>('form');
+  const [scheduleForm, setScheduleForm] = useState({
+    name: '', phone: '', whatsapp: '', email: '', reason: '',
+  });
   const [scheduleSlots, setScheduleSlots] = useState<AvailableSlot[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleCreating, setScheduleCreating] = useState(false);
@@ -884,12 +888,40 @@ export function MessageThread({
     }
   }, [conversation, aiLoading]);
 
-  const handleOpenSchedule = useCallback(async () => {
+  // Opens the dialog with the data-collection form (step 'form').
+  // Pre-fills name/phone/email from the existing contact row when available.
+  const handleOpenSchedule = useCallback(() => {
     if (!conversation) return;
-    setScheduleOpen(true);
+    const c = typeof conversation.contact === "object" && conversation.contact !== null
+      ? conversation.contact as { name?: string; phone?: string; email?: string }
+      : null;
+    const contactPhone = c?.phone ?? "";
+    setScheduleForm({
+      name: c?.name ?? "",
+      phone: contactPhone,
+      whatsapp: contactPhone,      // default whatsapp = same as phone
+      email: c?.email ?? "",
+      reason: "",
+    });
+    setScheduleStep("form");
+    setScheduleSlots([]);
     setScheduleError(null);
     setScheduleSuccess(null);
-    setScheduleSlots([]);
+    setScheduleOpen(true);
+  }, [conversation]);
+
+  // Validates the form and fetches available slots (step 'form' → 'slots').
+  const handleFetchSlots = useCallback(async () => {
+    const { name, phone, whatsapp, email, reason } = scheduleForm;
+    if (!name.trim()) { setScheduleError("Nome é obrigatório."); return; }
+    if (!phone.trim()) { setScheduleError("Telefone/celular é obrigatório."); return; }
+    if (!whatsapp.trim()) { setScheduleError("WhatsApp é obrigatório."); return; }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setScheduleError("Informe um e-mail válido."); return;
+    }
+    if (!reason.trim()) { setScheduleError("Motivo do atendimento é obrigatório."); return; }
+
+    setScheduleError(null);
     setScheduleLoading(true);
     try {
       const res = await fetch("/api/calendar/availability?days=7&max=6");
@@ -901,13 +933,17 @@ export function MessageThread({
       const d = await res.json() as { slots?: AvailableSlot[]; duration_minutes?: number };
       setScheduleSlots(d.slots ?? []);
       setScheduleDuration(d.duration_minutes ?? 30);
-      if (!d.slots?.length) setScheduleError("Nenhum horário disponível nos próximos 7 dias.");
+      if (!d.slots?.length) {
+        setScheduleError("Nenhum horário disponível nos próximos 7 dias.");
+        return;
+      }
+      setScheduleStep("slots");
     } catch {
       setScheduleError("Falha ao consultar disponibilidade.");
     } finally {
       setScheduleLoading(false);
     }
-  }, [conversation]);
+  }, [scheduleForm]);
 
   const handleCreateAppointment = useCallback(async (slot: AvailableSlot) => {
     if (!conversation) return;
@@ -916,12 +952,6 @@ export function MessageThread({
     try {
       const contactId = typeof conversation.contact === "object" && conversation.contact !== null
         ? (conversation.contact as { id?: string }).id
-        : undefined;
-      const contactEmail = typeof conversation.contact === "object" && conversation.contact !== null
-        ? (conversation.contact as { email?: string }).email
-        : undefined;
-      const contactName = typeof conversation.contact === "object" && conversation.contact !== null
-        ? (conversation.contact as { name?: string }).name
         : undefined;
 
       const res = await fetch("/api/calendar/appointments", {
@@ -932,8 +962,12 @@ export function MessageThread({
           contact_id: contactId ?? null,
           start_iso: slot.startISO,
           end_iso: slot.endISO,
-          attendee_email: contactEmail ?? null,
-          attendee_name: contactName ?? null,
+          attendee_name: scheduleForm.name.trim(),
+          attendee_phone: scheduleForm.phone.trim(),
+          attendee_whatsapp: scheduleForm.whatsapp.trim(),
+          attendee_email: scheduleForm.email.trim(),
+          reason: scheduleForm.reason.trim(),
+          origin: "Inbox",
         }),
       });
       const d = await res.json() as { error?: string; online_meeting_url?: string };
@@ -941,14 +975,14 @@ export function MessageThread({
         setScheduleError(d.error ?? "Falha ao criar agendamento.");
         return;
       }
-      const linkInfo = d.online_meeting_url ? ` Link: ${d.online_meeting_url}` : "";
-      setScheduleSuccess(`Agendamento criado: ${slot.label}.${linkInfo}`);
+      const linkInfo = d.online_meeting_url ? `\n🔗 Google Meet: ${d.online_meeting_url}` : "";
+      setScheduleSuccess(`✅ Agendamento criado: ${slot.label}.${linkInfo}`);
     } catch {
       setScheduleError("Falha ao criar agendamento.");
     } finally {
       setScheduleCreating(false);
     }
-  }, [conversation]);
+  }, [conversation, scheduleForm]);
 
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
@@ -1390,34 +1424,89 @@ export function MessageThread({
         onSelect={handleSendTemplate}
       />
 
-      {/* Scheduling dialog */}
-      <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) { setScheduleSuccess(null); setScheduleError(null); } }}>
+      {/* Scheduling dialog — Agendamento Inteligente 2.0 */}
+      <Dialog open={scheduleOpen} onOpenChange={(o) => {
+        setScheduleOpen(o);
+        if (!o) { setScheduleSuccess(null); setScheduleError(null); setScheduleStep("form"); }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Criar agendamento</DialogTitle>
+            <DialogTitle>
+              {scheduleStep === "form" ? "Dados do agendamento" : "Horários disponíveis"}
+            </DialogTitle>
             <DialogDescription>
-              Selecione um horário disponível para criar um compromisso no calendário.
-              {scheduleDuration > 0 && ` Duração: ${scheduleDuration} minutos.`}
+              {scheduleStep === "form"
+                ? "Preencha todos os dados do cliente antes de verificar os horários."
+                : `Selecione um horário disponível. Duração: ${scheduleDuration} min.`}
             </DialogDescription>
           </DialogHeader>
 
-          {scheduleLoading && (
-            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Consultando disponibilidade…
-            </div>
-          )}
-
-          {scheduleError && !scheduleLoading && (
-            <p className="text-sm text-destructive">{scheduleError}</p>
-          )}
-
+          {/* Success */}
           {scheduleSuccess && (
             <p className="text-sm text-green-600 dark:text-green-400 whitespace-pre-wrap">{scheduleSuccess}</p>
           )}
 
-          {!scheduleLoading && !scheduleSuccess && scheduleSlots.length > 0 && (
+          {/* Error */}
+          {scheduleError && (
+            <p className="text-sm text-destructive">{scheduleError}</p>
+          )}
+
+          {/* Step 1: Data collection form */}
+          {!scheduleSuccess && scheduleStep === "form" && (
+            <div className="space-y-3">
+              {(["name", "phone", "whatsapp", "email", "reason"] as const).map((field) => {
+                const labels: Record<string, string> = {
+                  name: "Nome completo",
+                  phone: "Telefone / Celular (com DDD)",
+                  whatsapp: "WhatsApp (com DDD)",
+                  email: "E-mail",
+                  reason: "Motivo do atendimento",
+                };
+                return (
+                  <div key={field} className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">{labels[field]}</label>
+                    <input
+                      type={field === "email" ? "email" : "text"}
+                      value={scheduleForm[field]}
+                      onChange={(e) => setScheduleForm((prev) => ({ ...prev, [field]: e.target.value }))}
+                      placeholder={labels[field]}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary/60"
+                    />
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={handleFetchSlots}
+                disabled={scheduleLoading}
+                className="mt-1 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {scheduleLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Consultando disponibilidade…
+                  </span>
+                ) : "Verificar horários disponíveis"}
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Slot picker */}
+          {!scheduleSuccess && scheduleStep === "slots" && (
             <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => { setScheduleStep("form"); setScheduleError(null); }}
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                ← Voltar aos dados
+              </button>
+              {scheduleLoading && (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Consultando disponibilidade…
+                </div>
+              )}
               {scheduleSlots.map((slot) => (
                 <button
                   key={slot.startISO}
@@ -1429,11 +1518,9 @@ export function MessageThread({
                   {scheduleCreating ? (
                     <span className="flex items-center gap-2">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Criando…
+                      Criando agendamento…
                     </span>
-                  ) : (
-                    slot.label
-                  )}
+                  ) : slot.label}
                 </button>
               ))}
             </div>

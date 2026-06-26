@@ -13,17 +13,20 @@ import { formatSlotLabel } from '@/lib/calendar/business-hours'
 /**
  * POST /api/calendar/appointments
  *
- * Creates a calendar event for a conversation. Called from the Inbox
- * "Agendar" dialog when the agent confirms a slot.
+ * Agendamento Inteligente 2.0 — creates a Google Calendar event with Meet link.
+ * All 5 contact data fields are required before the event can be created.
  *
  * Body: {
- *   conversation_id: string
- *   contact_id: string
- *   start_iso: string      // UTC ISO
- *   end_iso: string        // UTC ISO
- *   title?: string
- *   attendee_email?: string
- *   attendee_name?: string
+ *   conversation_id?: string
+ *   contact_id?: string
+ *   start_iso: string          // UTC ISO
+ *   end_iso: string            // UTC ISO
+ *   attendee_name: string      // Required
+ *   attendee_phone: string     // Required
+ *   attendee_whatsapp: string  // Required
+ *   attendee_email: string     // Required
+ *   reason: string             // Required — motivo do atendimento
+ *   origin?: string            // 'Inbox' | 'Widget' | 'WhatsApp' etc.
  * }
  */
 export async function POST(request: NextRequest) {
@@ -40,13 +43,30 @@ export async function POST(request: NextRequest) {
       contact_id?: string
       start_iso?: string
       end_iso?: string
-      title?: string
-      attendee_email?: string
       attendee_name?: string
+      attendee_phone?: string
+      attendee_whatsapp?: string
+      attendee_email?: string
+      reason?: string
+      origin?: string
     }
 
     if (!body.start_iso || !body.end_iso) {
       return NextResponse.json({ error: 'start_iso e end_iso são obrigatórios.' }, { status: 400 })
+    }
+
+    const missingFields: string[] = []
+    if (!body.attendee_name?.trim()) missingFields.push('nome')
+    if (!body.attendee_phone?.trim()) missingFields.push('telefone/celular')
+    if (!body.attendee_whatsapp?.trim()) missingFields.push('WhatsApp')
+    if (!body.attendee_email?.trim()) missingFields.push('e-mail')
+    if (!body.reason?.trim()) missingFields.push('motivo do atendimento')
+
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        { error: `Dados obrigatórios ausentes: ${missingFields.join(', ')}.` },
+        { status: 400 },
+      )
     }
 
     const [adapter, settings] = await Promise.all([
@@ -60,7 +80,25 @@ export async function POST(request: NextRequest) {
 
     const timezone = settings.timezone
     const startDate = new Date(body.start_iso)
-    const title = body.title ?? `Atendimento via WAVON — ${formatSlotLabel(startDate, timezone)}`
+    const slotLabel = formatSlotLabel(startDate, timezone)
+    const origin = body.origin ?? 'Inbox'
+    const createdAt = new Date().toLocaleString('pt-BR', { timeZone: timezone })
+
+    const title = `Atendimento - ${body.attendee_name!.trim()}`
+
+    const descriptionLines = [
+      `Nome: ${body.attendee_name!.trim()}`,
+      `Telefone: ${body.attendee_phone!.trim()}`,
+      `WhatsApp: ${body.attendee_whatsapp!.trim()}`,
+      `E-mail: ${body.attendee_email!.trim()}`,
+      `Motivo: ${body.reason!.trim()}`,
+      ``,
+      `Origem: ${origin}`,
+      `Empresa/Workspace: WAVON`,
+      `Data de criação: ${createdAt}`,
+      body.contact_id ? `ID do contato: ${body.contact_id}` : null,
+      body.conversation_id ? `ID da conversa: ${body.conversation_id}` : null,
+    ].filter(Boolean).join('\n')
 
     let created
     try {
@@ -68,9 +106,9 @@ export async function POST(request: NextRequest) {
         title,
         startISO: body.start_iso,
         endISO: body.end_iso,
-        description: 'Agendamento criado automaticamente pela IA do WAVON.',
-        attendeeEmail: body.attendee_email ?? null,
-        attendeeName: body.attendee_name ?? null,
+        description: descriptionLines,
+        attendeeEmail: body.attendee_email!.trim(),
+        attendeeName: body.attendee_name!.trim(),
         requestOnlineMeeting: true,
       })
     } catch (err) {
@@ -81,7 +119,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao criar evento no calendário.' }, { status: 502 })
     }
 
-    // Persist in calendar_appointments
+    const fullDescription = created.onlineMeetingUrl
+      ? descriptionLines + `\nLink Google Meet: ${created.onlineMeetingUrl}`
+      : descriptionLines
+
     const { data: appointment, error: insertError } = await supabaseAdmin()
       .from('calendar_appointments')
       .insert({
@@ -95,7 +136,7 @@ export async function POST(request: NextRequest) {
         end_at: created.endISO,
         online_meeting_url: created.onlineMeetingUrl ?? null,
         status: 'scheduled',
-        notes: 'Agendamento criado automaticamente pela IA.',
+        notes: fullDescription,
       })
       .select('id')
       .single()
@@ -104,19 +145,41 @@ export async function POST(request: NextRequest) {
       console.error('[calendar/appointments POST] insert failed:', insertError)
     }
 
-    // Record in Inbox as a bot message
+    // Update contact email if not already set
+    if (body.contact_id && body.attendee_email?.trim()) {
+      const { data: contact } = await supabaseAdmin()
+        .from('contacts')
+        .select('id, email')
+        .eq('id', body.contact_id)
+        .single()
+
+      if (contact && !contact.email) {
+        await supabaseAdmin()
+          .from('contacts')
+          .update({ email: body.attendee_email.trim(), updated_at: new Date().toISOString() })
+          .eq('id', body.contact_id)
+      }
+    }
+
+    // Post rich confirmation message to Inbox
     if (body.conversation_id) {
-      const slotLabel = formatSlotLabel(startDate, timezone)
       const msgLines = [
         `📅 *Agendamento confirmado*`,
-        `Data: ${slotLabel}`,
-        `Duração: ${settings.meetingDurationMinutes} minutos`,
+        ``,
+        `👤 *Cliente:* ${body.attendee_name!.trim()}`,
+        `📱 *Telefone:* ${body.attendee_phone!.trim()}`,
+        `📱 *WhatsApp:* ${body.attendee_whatsapp!.trim()}`,
+        `✉️ *E-mail:* ${body.attendee_email!.trim()}`,
+        `📋 *Motivo:* ${body.reason!.trim()}`,
+        ``,
+        `📆 *Data:* ${slotLabel}`,
+        `⏱️ *Duração:* ${settings.meetingDurationMinutes} minutos`,
       ]
       if (created.onlineMeetingUrl) {
-        msgLines.push(`Link da reunião: ${created.onlineMeetingUrl}`)
+        msgLines.push(`🔗 *Google Meet:* ${created.onlineMeetingUrl}`)
       }
 
-      const { error: msgInsertErr } = await supabaseAdmin()
+      await supabaseAdmin()
         .from('messages')
         .insert({
           conversation_id: body.conversation_id,
@@ -125,22 +188,27 @@ export async function POST(request: NextRequest) {
           content_text: msgLines.join('\n'),
           created_at: new Date().toISOString(),
         })
-      if (msgInsertErr) console.error('[calendar/appointments] inbox message failed:', msgInsertErr)
 
-      // Update last_message_text on conversation
-      const { error: convUpdateErr } = await supabaseAdmin()
+      await supabaseAdmin()
         .from('conversations')
         .update({
           last_message_text: `📅 Agendamento: ${slotLabel}`,
           last_message_at: new Date().toISOString(),
         })
         .eq('id', body.conversation_id)
-      if (convUpdateErr) console.error('[calendar/appointments] conversation update failed:', convUpdateErr)
     }
 
-    // Add note to most recent deal for this contact (best-effort)
+    // Update deal notes with scheduling info
     if (body.contact_id) {
-      await addDealNote(accountId, body.contact_id, title).catch(() => null)
+      await updateDealForScheduling(
+        accountId,
+        body.contact_id,
+        title,
+        slotLabel,
+        created.onlineMeetingUrl ?? null,
+        body.reason!.trim(),
+        body.attendee_email!.trim(),
+      ).catch(() => null)
     }
 
     logCalendarEvent(CalendarLogEvent.AppointmentCreated, {
@@ -164,12 +232,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function addDealNote(
+async function updateDealForScheduling(
   accountId: string,
   contactId: string,
-  appointmentTitle: string,
+  title: string,
+  slotLabel: string,
+  meetUrl: string | null,
+  reason: string,
+  email: string,
 ): Promise<void> {
-  // Find the most recent deal for this contact in this account
   const { data: deal } = await supabaseAdmin()
     .from('deals')
     .select('id, notes')
@@ -181,12 +252,18 @@ async function addDealNote(
 
   if (!deal) return
 
-  const noteEntry = `\n[WAVON IA] Agendamento criado automaticamente: ${appointmentTitle}`
-  const currentNotes = (deal.notes as string | null) ?? ''
+  const noteLines = [
+    ``,
+    `[WAVON IA] Agendamento criado: ${title}`,
+    `Data: ${slotLabel}`,
+    `Motivo: ${reason}`,
+    `E-mail: ${email}`,
+    meetUrl ? `Google Meet: ${meetUrl}` : null,
+  ].filter(Boolean).join('\n')
 
   await supabaseAdmin()
     .from('deals')
-    .update({ notes: currentNotes + noteEntry })
+    .update({ notes: ((deal.notes as string | null) ?? '') + noteLines })
     .eq('id', deal.id)
 
   logCalendarEvent(CalendarLogEvent.CrmNoteAdded, { dealId: deal.id })
