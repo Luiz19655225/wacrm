@@ -100,7 +100,7 @@ export async function getSchedulingContext(
 
     return {
       isOpen: false,
-      promptBlock: buildOutOfHoursBlock(closedLine, slots),
+      promptBlock: buildOutOfHoursBlock(closedLine, slots, now, timezone),
       slots,
     }
   } catch (err) {
@@ -109,9 +109,36 @@ export async function getSchedulingContext(
   }
 }
 
-function buildOutOfHoursBlock(closedLine: string, slots: TimeSlot[]): string {
+function buildOutOfHoursBlock(
+  closedLine: string,
+  slots: TimeSlot[],
+  now = new Date(),
+  timezone = 'America/Sao_Paulo',
+): string {
+  // Inject explicit date anchors so the AI can resolve "amanhã", "sexta-feira",
+  // "próxima semana" etc. to concrete dates and match them against the slot list.
+  const fmtDatetime = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: timezone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const fmtDate = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: timezone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60_000)
+
   const lines: string[] = [
     '## Contexto: fora do horário comercial',
+    '',
+    `Referência de data/hora atual (${timezone}):`,
+    `  Hoje: ${fmtDatetime.format(now)}`,
+    `  Amanhã: ${fmtDate.format(tomorrow)}`,
     '',
     closedLine,
     'Continue atendendo o cliente normalmente, usando toda a base de conhecimento disponível.',
@@ -121,18 +148,22 @@ function buildOutOfHoursBlock(closedLine: string, slots: TimeSlot[]): string {
   if (slots.length > 0) {
     lines.push(
       '',
-      'Se o cliente demonstrar intenção comercial (orçamento, reunião, demonstração,',
+      'Quando o cliente demonstrar intenção comercial (orçamento, reunião, demonstração,',
       'contratação, suporte especializado), ajude-o a agendar um atendimento.',
       '',
       'Horários disponíveis confirmados na agenda:',
       ...slots.map((s, i) => `  ${i + 1}. ${s.label}`),
       '',
-      'Instruções para tratar o horário pedido pelo cliente:',
-      '- Se o cliente pedir um horário específico E ele estiver na lista acima: confirme',
-      '  a disponibilidade e informe que a equipe formalizará o agendamento.',
-      '- Se o horário pedido NÃO estiver na lista: informe que aquele horário específico',
-      '  não está disponível e ofereça as opções da lista como alternativas.',
-      '- Nunca confirme nem invente horários que não estejam na lista acima.',
+      'REGRAS para responder pedidos de agendamento:',
+      '1. Use a referência de data acima para converter expressões relativas como',
+      '   "amanhã", "sexta-feira", "próxima semana" para as datas concretas.',
+      '2. Ao receber um pedido de horário específico, compare com a lista acima:',
+      '   - Horário pedido ESTÁ na lista → confirme diretamente:',
+      '     "Sim, temos disponibilidade [horário]. Posso confirmar para você?"',
+      '   - Horário pedido NÃO está na lista → informe que não está disponível',
+      '     e ofereça os horários da lista como alternativas.',
+      '3. Nunca confirme nem invente horários que não estejam na lista acima.',
+      '4. Só finalize o agendamento após o cliente confirmar explicitamente.',
     )
   }
 
