@@ -81,7 +81,7 @@ export async function getSchedulingContext(
       from: now,
       lookAheadDays: 7,
       maxSlots: 6,
-      sampleIntervalMinutes: 60,
+      sampleIntervalMinutes: 120,
     })
 
     logCalendarEvent(CalendarLogEvent.IntentInjected, {

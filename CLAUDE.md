@@ -243,17 +243,47 @@ Modificados: `src/components/settings/settings-sections.ts` (nova seção `agend
 4. Fazer commit + push + deploy (`npx vercel --prod`)
 5. Validar em produção: Configurações → Agenda → conectar Outlook → configurar horário comercial → testar IA fora do horário → testar botão "Agendar" no Inbox
 
+## Fase 7.3 — Agendamento Inteligente 2.0 (26/06/2026) — ✅ CONCLUÍDA e em produção (commit `b57694a`, deploy `dpl_AQXzE3F7gAhDUgvtFaQVbr2RUMx6`)
+
+Construída sobre a CalendarProvider abstraction da Fase 7.2. Objetivo: tornar o agendamento inteligente **universal** (IA sempre ativa, não só fora do horário) e **seguro** (nunca cria evento sem coleta completa dos 5 campos obrigatórios).
+
+### Mudança central — `scheduling-assistant.ts` (reescrita completa)
+
+- **Antes (Fase 7.2)**: IA só injetava o bloco de agendamento e buscava slots quando fora do horário comercial.
+- **Agora (Fase 7.3)**: `buildSchedulingBlock()` substitui `buildOutOfHoursBlock()`. O bloco de instruções é injetado **em todo prompt**, sempre. Slots são buscados do calendário em paralelo com RAG e Base de Conhecimento — independentemente do horário.
+
+### Regra dos 5 campos obrigatórios
+
+A IA nunca oferece horários ou confirma agendamentos antes de coletar: (1) Nome completo, (2) Celular com DDD, (3) WhatsApp (confirma se é diferente do celular), (4) E-mail válido, (5) Motivo do atendimento. A rota `POST /api/calendar/appointments` também aplica essa regra na camada de API — retorna 400 com lista dos campos faltantes se qualquer um estiver ausente.
+
+### Google Calendar (não Outlook)
+
+O Google Calendar já estava completamente implementado desde a Fase 7.2 (`GoogleCalendarAdapter`, OAuth2, `getGoogleFreeBusy`, `createGoogleCalendarEvent` com Google Meet via `conferenceData`) — o CLAUDE.md anterior descrevia o Outlook como "primeiro provider" porque foi escrito durante o planejamento inicial, mas na prática o Google foi concluído primeiro. Outlook permanece implementado mas sem credenciais Azure. Toda a Fase 7.3 usa **Google Calendar com Google Meet**.
+
+### 6 arquivos alterados
+
+1. **`src/lib/ai/scheduling-assistant.ts`** — reescrita: sempre ativo, sempre busca slots, instrução dos 5 campos obrigatórios injetada em todo prompt.
+2. **`src/app/api/calendar/appointments/route.ts`** — validação dos 5 campos (`attendee_name`, `attendee_phone`, `attendee_whatsapp`, `attendee_email`, `reason`); título `Atendimento - [Nome]`; descrição rica; atualiza e-mail do contato no CRM; posta confirmação no Inbox; atualiza notas do deal.
+3. **`src/app/api/public/site-widget/schedule/route.ts`** — **novo**: endpoint público (sem autenticação) para agendamento pelo Widget. Usa `supabaseAdmin` + `resolveSiteWidgetAccountId()` + `phonesMatch()` (mesmo padrão do `message/route.ts`). Cria evento Google Calendar com Google Meet, persiste em `calendar_appointments`, atualiza contato/deal, posta confirmação no Inbox. Retorna `{ success, appointment_id, title, start_iso, end_iso, online_meeting_url, confirmation }`.
+4. **`src/components/inbox/message-thread.tsx`** — dialog em 2 etapas: **etapa 1 (form)** coleta os 5 campos (pré-preenchido com dados do contato) → "Verificar horários" busca `GET /api/calendar/availability`; **etapa 2 (slots)** exibe botões de horário + "← Voltar". `handleCreateAppointment` passa todos os 5 campos + `origin: "Inbox"`.
+5. **`src/components/site-widget/chat-widget.tsx`** — reescrita: formulário inicial agora coleta nome + WhatsApp + **e-mail** (3 campos, validação regex); `StoredSession` inclui `email`; resposta com `scheduling_slots` + palavra de agendamento → picker de horários inline; ao selecionar slot → mini-formulário de confirmação (WhatsApp + motivo); `handleConfirmSchedule()` chama `POST /api/public/site-widget/schedule`; altura aumentada de 28rem para 32rem.
+6. **`src/app/api/public/site-widget/message/route.ts`** — aceita `email` (persiste no contato na primeira mensagem se não havia); retorna `scheduling_slots` condicionalmente (AI reply contém palavra de agendamento E há slots disponíveis); `availableSchedulingSlots` declarado fora do `if (aiSettings)` para ficar acessível no `return`.
+
+`npm run typecheck`, `npm run lint` (0 erros, 21 warnings — todos pré-existentes) e `npm run build` limpos. Em produção sem pendências.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 a 7.1 fechadas e em produção — migrations `024` a `035` aplicadas. Fase 7.2 (Agendamento Inteligente) implementada localmente (código completo, build limpo) — aguardando Azure App + migration `036` + Vercel env vars para commit/deploy/validação em produção.
+Fases 2 a 7.3 fechadas e em produção — migrations `024` a `036` aplicadas.
 
 Pendências não-bloqueantes:
 - Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
 - Adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 mais abaixo) — não relacionada à Fase 3/4.
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
+- Bug a investigar: IA às vezes não oferece o slot das 14:00 mesmo quando livre — suspeita em `computeAvailableSlots` (`sampleIntervalMinutes: 60` + `maxSlots: 6`); verificar após validação do fluxo completo em produção.
+- Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`). Configurável por quem criar um Azure App Registration (instruções na Fase 7.2).
 
-## Estado atual da plataforma (25/06/2026)
+## Estado atual da plataforma (26/06/2026)
 WAVON em produção (`www.wavon.com.br`) com:
 - CRM (Contatos, Pipeline/Negociações, Automações)
 - Inbox com WhatsApp via Evolution API (inbound e outbound validados, mídias inbound funcionando)
@@ -261,11 +291,11 @@ WAVON em produção (`www.wavon.com.br`) com:
 - IA integrada via OpenAI (Responses API), chave própria por conta, criptografada
 - Assistente IA no Inbox: sugerir resposta, resumir conversa, classificar lead
 - Base de Conhecimento da IA: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
-- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`), pronto para outros consumidores futuros
-- Widget de atendimento IA no site público, conversas chegando ao Inbox normal, IA usando a chave OpenAI da própria conta
-- **Agendamento Inteligente (Fase 7.2)**: implementado localmente — CalendarProvider abstraction, Outlook Calendar via Graph API, horário comercial DST-safe, IA oferece slots quando fora do horário, botão "Agendar" no Inbox, observabilidade completa — aguardando Azure App + migration `036` + env vars para entrar em produção
+- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`)
+- Widget de atendimento IA no site público (coleta nome + WhatsApp + e-mail), conversas chegando ao Inbox normal
+- **Agendamento Inteligente 2.0 (Fase 7.3)**: IA sempre ativa para agendamento (não só fora do horário); coleta obrigatória de 5 campos; Google Calendar com Google Meet; endpoint público `/api/public/site-widget/schedule`; dialog 2 etapas no Inbox; picker inline no Widget — tudo em produção
 
-Todas as migrations até `035` aplicadas em produção. Migration `036` (Fase 7.2) criada, aguardando aplicação manual no Supabase.
+Todas as migrations até `036` aplicadas em produção.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

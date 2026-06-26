@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       from: now,
       lookAheadDays,
       maxSlots,
+      sampleIntervalMinutes: 120,
     })
 
     logCalendarEvent(CalendarLogEvent.AvailabilityQueried, {
