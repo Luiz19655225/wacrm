@@ -61,7 +61,19 @@ async function resolveAccountId(
     (payload.payment?.externalReference as string | undefined) ??
     null;
   if (externalReference && /^[0-9a-f-]{36}$/i.test(externalReference)) {
-    return externalReference;
+    // Verify the account actually exists before returning it as accountId.
+    // externalReference is set by our code when a subscription is created,
+    // but sandbox test events may carry a UUID that was never registered in
+    // this environment — returning it unverified causes a FK violation (23503)
+    // on the billing_events insert, which becomes a 500 instead of a clean
+    // 200 + ignored record.
+    const { data: acct } = await supabaseAdmin()
+      .from("accounts")
+      .select("id")
+      .eq("id", externalReference)
+      .maybeSingle();
+    if (acct) return acct.id as string;
+    // Not found in accounts — fall through to subscription-id lookup below.
   }
 
   // Fallback: a payment generated from a subscription always carries
