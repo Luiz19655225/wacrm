@@ -289,14 +289,49 @@ O Google Calendar já estava completamente implementado desde a Fase 7.2 (`Googl
 
 `npm run typecheck`, `npm run lint` (0 erros, 21 warnings — todos pré-existentes) e `npm run build` limpos. Em produção sem pendências.
 
+## Fase 8.0 — Agenda WAVON (em implementação — 26/06/2026)
+
+Agenda nativa do WAVON. Google Calendar e Outlook são apenas provedores de sincronização. A tabela `calendar_appointments` é a fonte primária de todos os compromissos.
+
+### Decisões de arquitetura (aprovadas — não alterar sem aprovação explícita)
+
+- **Hierarquia**: WAVON Agenda → Google Calendar → Outlook → Apple/CalDAV (futuro)
+- **Status persistidos**: `scheduled` (Pendente UI), `rescheduled` (Reagendado), `cancelled` (Cancelado), `completed` (Concluído). "Confirmado" é UI-only via `confirmed_at TIMESTAMPTZ` (futuro — sem migration de status).
+- **Provider**: `GOOGLE | OUTLOOK | LOCAL` (LOCAL = compromisso interno, sem calendário externo)
+- **Origin**: `Widget | WhatsApp | Inbox | Manual | Google | Outlook | API`
+- **Sync**: `POST /api/calendar/sync?provider=GOOGLE|OUTLOOK|ALL` — janela -30 dias a +365 dias (configurável). Não sobrescreve `status` alterado manualmente (exceto se Google marcar como cancelado).
+- **CalendarProvider interface**: método `listEvents(startISO, endISO)` adicionado. Google: implementado. Outlook: stub `return []`.
+- **Timezone**: UTC no banco, timezone de `calendar_settings.timezone` para exibição.
+
+### Preparação para funcionalidades futuras (arquitetura apenas — não implementar)
+
+- **Multiusuário**: `assigned_user_id` já presente. Teams/workspaces via filtro por `assigned_user_id` (sem migration extra).
+- **Eventos recorrentes**: campos `recurrence_rule TEXT` (RRULE) + `recurrence_parent_id UUID` reservados para migration futura.
+- **Timeline do cliente**: JOIN via `contact_id` em `messages/conversations/deals/calendar_appointments` (já indexado).
+- **WAVI Insights**: painel inteligente no compromisso usando campos já no modelo (CRM, pipeline, última conversa, tempo sem contato).
+- **Hover Card**: dados já em `AppointmentWithContact` (nome, empresa, telefone, pipeline, meet).
+- **Dashboard KPIs**: todos computáveis via índice `idx_calendar_appointments_kpi(account_id, status, origin, start_at)`.
+
+### Migration 037 — `037_agenda_enhancements.sql`
+
+Puramente aditiva. Adiciona: `reason TEXT`, `origin TEXT CHECK(...)`, `assigned_user_id UUID → auth.users`, expande `provider_type` (+LOCAL) e `status` (+rescheduled), cria 4 índices (`account_range`, `contact`, `kpi`, `external_id` UNIQUE para upsert de sync).
+
+### Arquivos criados/alterados na Fase 8.0 (todos criados/verificados — typecheck/lint/build limpos)
+
+Criados: `supabase/migrations/037_agenda_enhancements.sql`, `src/lib/agenda/types.ts`, `src/app/api/calendar/sync/route.ts`, `src/app/api/agenda/appointments/route.ts`, `src/app/api/agenda/appointments/[id]/route.ts`, `src/app/(dashboard)/agenda/page.tsx`, `src/components/agenda/agenda-page.tsx`, `src/components/agenda/agenda-header.tsx`, `src/components/agenda/calendar-month-view.tsx`, `src/components/agenda/appointment-card.tsx`, `src/components/agenda/appointment-panel.tsx`.
+
+Alterados: `src/lib/calendar/types.ts` (+ExternalCalendarEvent, +listEvents), `src/lib/calendar/providers/google/client.ts` (+getGoogleCalendarEvents), `src/lib/calendar/providers/google/adapter.ts` (+listEvents), `src/lib/calendar/providers/outlook/adapter.ts` (+listEvents stub), `src/app/api/calendar/appointments/route.ts` (+reason +origin no INSERT), `src/components/layout/sidebar.tsx` (+Agenda entre Negociações e Disparos).
+
+### Nota de arquitetura — sync provider único
+`calendar_settings` tem UNIQUE em `account_id` (1 linha por conta), então `/api/calendar/sync` trabalha com o único provider configurado. O param `?provider=GOOGLE|OUTLOOK|ALL` atua como filtro (no-op se não bater). Multi-provider real fica para uma migration futura.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 a 7.3 fechadas e em produção — migrations `024` a `036` aplicadas.
+Fases 2 a 7.3 fechadas e em produção — migrations `024` a `036` aplicadas. Migration `037` em implementação.
 
 Pendências não-bloqueantes:
-- Remover os logs temporários de diagnóstico em `evolution-webhook-processor.ts` (marcados `// TEMP DIAGNOSTIC LOG`) depois de mais alguns dias de operação estável.
-- Adicionar `SUBSCRIPTION_CANCELED` aos eventos do webhook Asaas (ver seção Fase 2 mais abaixo) — não relacionada à Fase 3/4.
+- Adicionar `SUBSCRIPTION_INACTIVATED` + `SUBSCRIPTION_DELETED` ao webhook Asaas Sandbox (ação manual no painel Asaas) — não relacionada às demais fases.
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`). Configurável por quem criar um Azure App Registration (instruções na Fase 7.2).
 

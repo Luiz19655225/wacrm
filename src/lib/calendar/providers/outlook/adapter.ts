@@ -3,6 +3,7 @@ import type {
   CalendarAppointmentInput,
   CalendarProvider,
   CreatedAppointment,
+  ExternalCalendarEvent,
 } from '../../types'
 import {
   createCalendarEvent,
@@ -45,5 +46,10 @@ export class OutlookCalendarAdapter implements CalendarProvider {
       endISO: input.endISO,
       onlineMeetingUrl,
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async listEvents(_startISO: string, _endISO: string): Promise<ExternalCalendarEvent[]> {
+    return []
   }
 }

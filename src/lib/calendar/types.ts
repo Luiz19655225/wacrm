@@ -35,8 +35,24 @@ export interface BusyInterval {
   end: Date
 }
 
+// ─── Sync ─────────────────────────────────────────────────────────────────────
+
+/** A calendar event as returned by an external provider's events list API.
+ *  Used by POST /api/calendar/sync to upsert into calendar_appointments. */
+export interface ExternalCalendarEvent {
+  externalEventId: string
+  title: string
+  startISO: string
+  endISO: string
+  onlineMeetingUrl: string | null
+  /** True when the provider reports the event as deleted/cancelled. */
+  isCancelled: boolean
+}
+
+// ─── Provider abstraction ─────────────────────────────────────────────────────
+
 /**
- * Every calendar provider (Outlook, Google, Calendly …) must implement
+ * Every calendar provider (Outlook, Google, Apple, CalDAV …) must implement
  * this interface. The rest of the system only speaks CalendarProvider —
  * never a concrete provider class.
  */
@@ -44,6 +60,9 @@ export interface CalendarProvider {
   getProviderEmail(): Promise<string>
   getFreeBusyIntervals(startISO: string, endISO: string): Promise<BusyInterval[]>
   createAppointment(input: CalendarAppointmentInput): Promise<CreatedAppointment>
+  /** Returns all events in the given UTC window for sync purposes.
+   *  Returns [] for providers that don't yet implement sync. */
+  listEvents(startISO: string, endISO: string): Promise<ExternalCalendarEvent[]>
 }
 
 // ─── DB row shapes (raw from Supabase) ───────────────────────────────────────

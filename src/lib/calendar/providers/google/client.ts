@@ -176,3 +176,76 @@ export async function deleteGoogleCalendarEvent(
     { method: 'DELETE' },
   )
 }
+
+// ─── Event list (for sync) ────────────────────────────────────────────────────
+
+interface GoogleEventsListResponse {
+  items?: GoogleEventListItem[]
+  nextPageToken?: string
+}
+
+interface GoogleEventListItem {
+  id: string
+  summary?: string
+  status?: 'confirmed' | 'tentative' | 'cancelled'
+  start?: { dateTime?: string; date?: string }
+  end?: { dateTime?: string; date?: string }
+  hangoutLink?: string
+  conferenceData?: {
+    entryPoints?: { entryPointType: string; uri: string }[]
+  }
+}
+
+export interface GoogleCalendarEventResult {
+  id: string
+  title: string
+  startISO: string
+  endISO: string
+  onlineMeetingUrl: string | null
+  isCancelled: boolean
+}
+
+/**
+ * Fetches all events from the primary Google Calendar within the given UTC
+ * window. Includes cancelled events (showDeleted=true) so the sync can mark
+ * locally-cached appointments as cancelled when the user deletes them in
+ * Google Calendar. Handles a single page — maxResults=2500 covers typical
+ * business calendars without needing pagination.
+ */
+export async function getGoogleCalendarEvents(
+  accessToken: string,
+  startISO: string,
+  endISO: string,
+): Promise<GoogleCalendarEventResult[]> {
+  const params = new URLSearchParams({
+    timeMin: startISO,
+    timeMax: endISO,
+    showDeleted: 'true',
+    singleEvents: 'true',
+    maxResults: '2500',
+    orderBy: 'startTime',
+  })
+
+  const data = await googleFetch<GoogleEventsListResponse>(
+    accessToken,
+    `${CALENDAR_BASE}/calendars/primary/events?${params}`,
+  )
+
+  return (data.items ?? []).map((item) => {
+    const startRaw = item.start?.dateTime ?? item.start?.date ?? ''
+    const endRaw   = item.end?.dateTime   ?? item.end?.date   ?? ''
+    const meetUrl  =
+      item.hangoutLink ??
+      item.conferenceData?.entryPoints?.find((e) => e.entryPointType === 'video')?.uri ??
+      null
+
+    return {
+      id:             item.id,
+      title:          item.summary ?? '(sem título)',
+      startISO:       startRaw ? new Date(startRaw).toISOString() : startISO,
+      endISO:         endRaw   ? new Date(endRaw).toISOString()   : endISO,
+      onlineMeetingUrl: meetUrl,
+      isCancelled:    item.status === 'cancelled',
+    }
+  })
+}

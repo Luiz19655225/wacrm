@@ -136,6 +136,8 @@ export async function POST(request: NextRequest) {
         end_at: created.endISO,
         online_meeting_url: created.onlineMeetingUrl ?? null,
         status: 'scheduled',
+        reason: body.reason!.trim(),
+        origin,
         notes: fullDescription,
       })
       .select('id')

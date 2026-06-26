@@ -3,10 +3,12 @@ import type {
   CalendarAppointmentInput,
   CalendarProvider,
   CreatedAppointment,
+  ExternalCalendarEvent,
 } from '../../types'
 import {
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
+  getGoogleCalendarEvents,
   getGoogleFreeBusy,
   googleGetMe,
   updateGoogleCalendarEvent,
@@ -70,5 +72,17 @@ export class GoogleCalendarAdapter implements CalendarProvider {
   /** Delete a Google Calendar event. */
   async deleteEvent(eventId: string): Promise<void> {
     await deleteGoogleCalendarEvent(this.accessToken, eventId)
+  }
+
+  async listEvents(startISO: string, endISO: string): Promise<ExternalCalendarEvent[]> {
+    const items = await getGoogleCalendarEvents(this.accessToken, startISO, endISO)
+    return items.map((item) => ({
+      externalEventId:  item.id,
+      title:            item.title,
+      startISO:         item.startISO,
+      endISO:           item.endISO,
+      onlineMeetingUrl: item.onlineMeetingUrl,
+      isCancelled:      item.isCancelled,
+    }))
   }
 }
