@@ -27,7 +27,15 @@ export class GoogleCalendarAdapter implements CalendarProvider {
     startISO: string,
     endISO: string,
   ): Promise<BusyInterval[]> {
-    return getGoogleFreeBusy(this.accessToken, startISO, endISO)
+    // Use the same filter as listEvents so free/busy is consistent with sync.
+    const AUTO_CALENDAR_PATTERNS = ['#holiday', '#contacts', '#weather']
+    const calendars = await listGoogleCalendars(this.accessToken)
+    const relevantIds = calendars
+      .filter((cal) => !AUTO_CALENDAR_PATTERNS.some((pat) => cal.id.includes(pat)))
+      .map((cal) => cal.id)
+
+    const ids = relevantIds.length > 0 ? relevantIds : ['primary']
+    return getGoogleFreeBusy(this.accessToken, startISO, endISO, ids)
   }
 
   async createAppointment(

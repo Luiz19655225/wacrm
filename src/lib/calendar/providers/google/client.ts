@@ -53,18 +53,23 @@ interface FreeBusyResponse {
 }
 
 /**
- * Returns busy intervals from the user's primary Google Calendar within
- * the given UTC window.
+ * Returns busy intervals from the specified Google Calendars within the given
+ * UTC window. Pass multiple calendar IDs to cover secondary calendars too.
+ * Defaults to ['primary'] for backward compatibility.
+ *
+ * All items are sent in a single FreeBusy API call; busy intervals from every
+ * calendar in the list are merged into one flat array.
  */
 export async function getGoogleFreeBusy(
   accessToken: string,
   startISO: string,
   endISO: string,
+  calendarIds: string[] = ['primary'],
 ): Promise<{ start: Date; end: Date }[]> {
   const body = {
     timeMin: startISO,
     timeMax: endISO,
-    items: [{ id: 'primary' }],
+    items: calendarIds.map((id) => ({ id })),
   }
 
   const data = await googleFetch<FreeBusyResponse>(
@@ -73,8 +78,13 @@ export async function getGoogleFreeBusy(
     { method: 'POST', body: JSON.stringify(body) },
   )
 
-  const busy = data.calendars?.['primary']?.busy ?? []
-  return busy.map((b) => ({ start: new Date(b.start), end: new Date(b.end) }))
+  const allBusy: { start: Date; end: Date }[] = []
+  for (const cal of Object.values(data.calendars ?? {})) {
+    for (const b of cal.busy ?? []) {
+      allBusy.push({ start: new Date(b.start), end: new Date(b.end) })
+    }
+  }
+  return allBusy
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
