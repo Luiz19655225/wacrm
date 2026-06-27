@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
 import { AgendaHeader } from "./agenda-header"
 import { CalendarMonthView } from "./calendar-month-view"
@@ -20,6 +20,9 @@ export function AgendaPage() {
   const [syncing, setSyncing]         = useState(false)
   const [selected, setSelected]       = useState<AppointmentWithContact | null>(null)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
+
+  // Guards against duplicate auto-sync (React Strict Mode + navigation)
+  const autoSyncRan = useRef(false)
 
   // Compute UTC window for the visible month (full calendar grid = up to ±6 days padding)
   function monthWindow(y: number, m: number) {
@@ -46,6 +49,35 @@ export function AgendaPage() {
   useEffect(() => {
     void loadAppointments(year, month)
   }, [year, month, loadAppointments])
+
+  // Auto-sync on first page load — silent (no toast), non-blocking.
+  // The ref ensures it fires at most once per mount even in Strict Mode.
+  useEffect(() => {
+    if (autoSyncRan.current) return
+    autoSyncRan.current = true
+
+    const syncNow = async () => {
+      if (syncing) return
+      setSyncing(true)
+      try {
+        const res = await fetch("/api/calendar/sync", { method: "POST" })
+        if (!res.ok) return
+        type ProviderResult = { inserted: number; updated: number; errors: number }
+        const data = await res.json() as { results: Record<string, ProviderResult> }
+        if (data.results && Object.keys(data.results).length > 0) {
+          const hasNew = Object.values(data.results).some(r => r.inserted + r.updated > 0)
+          if (hasNew) void loadAppointments(today.getFullYear(), today.getMonth())
+        }
+      } catch {
+        // silent — auto-sync failure is not surfaced to the user
+      } finally {
+        setSyncing(false)
+      }
+    }
+
+    void syncNow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function goToPrev() {
     if (month === 0) { setYear(y => y - 1); setMonth(11) }

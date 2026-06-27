@@ -28,6 +28,7 @@ import {
   STATUS_COLOR,
   STATUS_LABEL,
   ORIGIN_LABEL,
+  getDurationLabel,
   toLocalLabel,
   toLocalTime,
 } from "@/lib/agenda/types"
@@ -78,7 +79,7 @@ export function AppointmentPanel({
               <div className="flex items-start justify-between gap-2 pr-8">
                 <div className="min-w-0">
                   <SheetTitle className="truncate">{appt.title}</SheetTitle>
-                  <SheetDescription className="mt-1">
+                  <SheetDescription className="mt-1 flex flex-wrap items-center gap-2">
                     <span
                       className={cn(
                         "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
@@ -88,8 +89,8 @@ export function AppointmentPanel({
                       {STATUS_LABEL[appt.status]}
                     </span>
                     {appt.origin && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        via {ORIGIN_LABEL[appt.origin]}
+                      <span className="text-xs text-muted-foreground">
+                        via {ORIGIN_LABEL[appt.origin] ?? appt.origin}
                       </span>
                     )}
                   </SheetDescription>
@@ -111,7 +112,15 @@ export function AppointmentPanel({
                   <div className="flex items-center gap-2">
                     <Clock className="size-4 shrink-0 text-muted-foreground" />
                     <span>
-                      {toLocalTime(appt.start_at, timezone)} – {toLocalTime(appt.end_at, timezone)}
+                      {toLocalTime(appt.start_at, timezone)}
+                      {" – "}
+                      {toLocalTime(appt.end_at, timezone)}
+                      <span
+                        data-testid="appt-duration"
+                        className="ml-2 text-xs text-muted-foreground"
+                      >
+                        ({getDurationLabel(appt.start_at, appt.end_at)})
+                      </span>
                     </span>
                   </div>
                   {appt.online_meeting_url && (
@@ -131,11 +140,11 @@ export function AppointmentPanel({
               </section>
 
               {/* Contact info */}
-              {appt.contact && (
-                <section>
-                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Cliente
-                  </h3>
+              <section>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Cliente
+                </h3>
+                {appt.contact ? (
                   <div className="flex flex-col gap-1.5 text-sm">
                     {appt.contact.name && (
                       <div className="flex items-center gap-2">
@@ -160,8 +169,10 @@ export function AppointmentPanel({
                       </div>
                     )}
                   </div>
-                </section>
-              )}
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem contato vinculado</p>
+                )}
+              </section>
 
               {/* Reason / notes */}
               {(appt.reason || appt.notes) && (
@@ -197,8 +208,8 @@ export function AppointmentPanel({
             </div>
 
             <SheetFooter className="border-t border-border p-4 flex flex-col gap-2">
-              {/* CRM & Inbox shortcuts */}
-              <div className="flex gap-2">
+              {/* CRM, Inbox & external calendar shortcuts */}
+              <div className="flex flex-wrap gap-2">
                 {appt.contact_id && (
                   <Button
                     variant="outline"
@@ -219,6 +230,18 @@ export function AppointmentPanel({
                   >
                     <MessageSquare className="size-3.5" />
                     Conversa
+                  </Button>
+                )}
+                {appt.provider_type === "GOOGLE" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    data-testid="open-gcal-btn"
+                    onClick={() => window.open("https://calendar.google.com/", "_blank", "noreferrer")}
+                  >
+                    <ExternalLink className="size-3.5" />
+                    Google Calendar
                   </Button>
                 )}
               </div>

@@ -115,6 +115,27 @@ export function toLocalLabel(dateISO: string, timezone: string): string {
   }).format(new Date(dateISO))
 }
 
+// ─── Origin badge (compact indicators shown inside appointment cards) ─────────
+
+/** Shown only for external-calendar origins to distinguish them at a glance. */
+export const ORIGIN_BADGE: Partial<Record<AppointmentOrigin, { short: string; className: string }>> = {
+  Google:  { short: 'G', className: 'bg-blue-500/20 text-blue-400' },
+  Outlook: { short: 'O', className: 'bg-indigo-500/20 text-indigo-400' },
+}
+
+// ─── Duration helper ──────────────────────────────────────────────────────────
+
+/** Returns a human-readable duration, e.g. "30 min", "1h", "1h 30min". */
+export function getDurationLabel(startISO: string, endISO: string): string {
+  const mins = Math.round(
+    (new Date(endISO).getTime() - new Date(startISO).getTime()) / 60_000,
+  )
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}h` : `${h}h ${m}min`
+}
+
 /** Groups an array of appointments by local date key ("YYYY-MM-DD"). */
 export function groupByDay(
   appointments: AppointmentWithContact[],

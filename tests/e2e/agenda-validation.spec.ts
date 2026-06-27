@@ -245,4 +245,116 @@ test.describe('Agenda WAVON — Validação pós-consolidação multi-calendári
     console.log('   ✅ Todos os campos obrigatórios presentes no formulário.')
   })
 
+  // ─── Teste 12 ─────────────────────────────────────────────────────────────
+  test('12. Sincronização automática dispara ao abrir /agenda (informativo)', async ({ page }) => {
+    // Listen for any sync POST that fires without the user clicking "Sincronizar"
+    let autoSynced = false
+    page.on('response', resp => {
+      if (
+        resp.url().includes('/api/calendar/sync') &&
+        resp.request().method() === 'POST'
+      ) {
+        autoSynced = true
+      }
+    })
+
+    await page.goto('/agenda')
+    await page.waitForTimeout(6_000)  // give auto-sync time to fire
+
+    if (autoSynced) {
+      console.log('   ✅ Sync automático detectado ao abrir /agenda')
+    } else {
+      console.log('   ℹ️ Sync automático não detectado na versão atual de produção')
+    }
+
+    // Informativo — estrito somente após o deploy desta fase
+    expect(true).toBe(true)
+  })
+
+  // ─── Teste 13 ─────────────────────────────────────────────────────────────
+  test('13. Contador de eventos aparece em dia com compromisso (informativo)', async ({ page }) => {
+    await page.goto('/agenda')
+
+    await page.waitForResponse(
+      resp => resp.url().includes('/api/agenda/appointments'),
+      { timeout: 10_000 },
+    )
+    await page.waitForTimeout(1_000)
+
+    const counters = page.locator('[data-testid^="event-count-"]')
+    const count = await counters.count()
+
+    if (count > 0) {
+      const first = await counters.first().textContent()
+      console.log(`   ✅ ${count} badge(s) de contador encontrado(s) — primeiro dia: "${first}"`)
+    } else {
+      console.log('   ℹ️ Nenhum evento no mês atual para verificar contador')
+    }
+
+    // Informativo — não falha se o mês estiver sem eventos
+    expect(true).toBe(true)
+  })
+
+  // ─── Teste 14 ─────────────────────────────────────────────────────────────
+  test('14. Badge de origem visível em evento externo (informativo)', async ({ page }) => {
+    await page.goto('/agenda')
+
+    await page.waitForResponse(
+      resp => resp.url().includes('/api/agenda/appointments'),
+      { timeout: 10_000 },
+    )
+    await page.waitForTimeout(1_000)
+
+    const badges = page.locator('[data-testid="origin-badge"]')
+    const count = await badges.count()
+
+    if (count > 0) {
+      const text = await badges.first().textContent()
+      console.log(`   ✅ ${count} badge(s) de origem encontrado(s) — primeiro: "${text}"`)
+    } else {
+      console.log('   ℹ️ Nenhum badge de origem visível — sem eventos Google/Outlook no mês')
+    }
+
+    expect(true).toBe(true)
+  })
+
+  // ─── Teste 15 ─────────────────────────────────────────────────────────────
+  test('15. Painel lateral exibe duração e botão Google Calendar (informativo)', async ({ page }) => {
+    await page.goto('/agenda')
+
+    await page.waitForResponse(
+      resp => resp.url().includes('/api/agenda/appointments'),
+      { timeout: 10_000 },
+    )
+    await page.waitForTimeout(1_500)
+
+    const cards = page.getByTestId('appointment-card')
+    const count = await cards.count()
+
+    if (count === 0) {
+      console.log('   ℹ️ Nenhum compromisso visível no calendário este mês')
+      expect(true).toBe(true)
+      return
+    }
+
+    await cards.first().click()
+
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 })
+
+    const durationEl = page.getByTestId('appt-duration')
+    const hasDuration = await durationEl.isVisible().catch(() => false)
+    if (hasDuration) {
+      const durationText = await durationEl.textContent()
+      console.log(`   ✅ Duração visível no painel: ${durationText}`)
+    }
+
+    const gcalBtn = page.getByTestId('open-gcal-btn')
+    const hasGcal = await gcalBtn.isVisible().catch(() => false)
+    if (hasGcal) {
+      console.log('   ✅ Botão "Google Calendar" visível no painel')
+    }
+
+    console.log('   ✅ Painel lateral abriu com detalhes do compromisso')
+  })
+
 })

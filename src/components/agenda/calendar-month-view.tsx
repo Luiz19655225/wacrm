@@ -66,7 +66,6 @@ export function CalendarMonthView({
             )
           }
 
-          // Build the YYYY-MM-DD key for this cell in the workspace timezone
           const mm = String(month + 1).padStart(2, "0")
           const dd = String(day).padStart(2, "0")
           const key = `${year}-${mm}-${dd}`
@@ -78,19 +77,37 @@ export function CalendarMonthView({
             <div
               key={key}
               className={cn(
-                "min-h-[100px] border-b border-border p-1",
-                isToday && "bg-primary/5",
+                "min-h-[100px] border-b border-border p-1 transition-colors",
+                isToday
+                  ? "bg-primary/5 ring-1 ring-inset ring-primary/30"
+                  : "hover:bg-muted/15",
               )}
             >
-              <div
-                className={cn(
-                  "mb-1 flex size-6 items-center justify-center rounded-full text-xs font-medium",
-                  isToday
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground",
+              {/* Day number row with event counter */}
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <div
+                  className={cn(
+                    "flex size-6 items-center justify-center rounded-full text-xs font-medium",
+                    isToday
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {day}
+                </div>
+                {dayAppts.length > 0 && (
+                  <span
+                    data-testid={`event-count-${day}`}
+                    className={cn(
+                      "rounded-full px-1.5 py-px text-[9px] font-medium tabular-nums",
+                      isToday
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted/60 text-muted-foreground",
+                    )}
+                  >
+                    {dayAppts.length}
+                  </span>
                 )}
-              >
-                {day}
               </div>
 
               <div className="flex flex-col gap-0.5">
