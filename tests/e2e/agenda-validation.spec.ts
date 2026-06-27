@@ -209,9 +209,9 @@ test.describe('Agenda WAVON — Validação pós-consolidação multi-calendári
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByText('Novo compromisso').last()).toBeVisible()
 
-    // Seções do modal
-    await expect(page.getByText('Cliente')).toBeVisible()
-    await expect(page.getByText('Compromisso')).toBeVisible()
+    // Seções do modal — usa role heading para evitar ambiguidade com botões
+    await expect(page.getByRole('heading', { name: 'Cliente', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Compromisso', exact: true })).toBeVisible()
 
     console.log('   ✅ Modal "Novo compromisso" abriu corretamente.')
   })
