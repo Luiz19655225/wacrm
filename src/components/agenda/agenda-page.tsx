@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
 import { AgendaHeader } from "./agenda-header"
+import { AgendaFiltersBar } from "./agenda-filters"
 import { CalendarMonthView } from "./calendar-month-view"
 import { AppointmentPanel } from "./appointment-panel"
 import { NewAppointmentDialog } from "./new-appointment-dialog"
 import type { AppointmentWithContact } from "@/lib/agenda/types"
+import type { AgendaFilters } from "./agenda-filters"
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo"
 
@@ -21,8 +23,24 @@ export function AgendaPage() {
   const [selected, setSelected]       = useState<AppointmentWithContact | null>(null)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
 
+  // Dynamic timezone — reads from account calendar settings, falls back to São Paulo
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE)
+
+  // Filter state — all "" means "show everything"
+  const [filters, setFilters] = useState<AgendaFilters>({ userId: "", origin: "", status: "" })
+
   // Guards against duplicate auto-sync (React Strict Mode + navigation)
   const autoSyncRan = useRef(false)
+
+  // Fetch account timezone on mount — silent, non-blocking
+  useEffect(() => {
+    fetch("/api/calendar/settings")
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { timezone?: string } | null) => {
+        if (data?.timezone) setTimezone(data.timezone)
+      })
+      .catch(() => { /* keep default */ })
+  }, [])
 
   // Compute UTC window for the visible month (full calendar grid = up to ±6 days padding)
   function monthWindow(y: number, m: number) {
@@ -148,6 +166,14 @@ export function AgendaPage() {
     void loadAppointments(year, month)
   }
 
+  // Client-side filtering — no API call; filters reduce the already-loaded month data
+  const filteredAppointments = appointments.filter(a => {
+    if (filters.userId && a.assigned_user_id !== filters.userId) return false
+    if (filters.origin && a.origin !== filters.origin) return false
+    if (filters.status && a.status !== filters.status) return false
+    return true
+  })
+
   return (
     <div className="flex h-full flex-col">
       <AgendaHeader
@@ -161,6 +187,12 @@ export function AgendaPage() {
         onNew={() => setNewDialogOpen(true)}
       />
 
+      <AgendaFiltersBar
+        appointments={appointments}
+        filters={filters}
+        onChange={setFilters}
+      />
+
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           Carregando…
@@ -169,15 +201,15 @@ export function AgendaPage() {
         <CalendarMonthView
           year={year}
           month={month}
-          appointments={appointments}
-          timezone={DEFAULT_TIMEZONE}
+          appointments={filteredAppointments}
+          timezone={timezone}
           onAppointmentClick={setSelected}
         />
       )}
 
       <AppointmentPanel
         appointment={selected}
-        timezone={DEFAULT_TIMEZONE}
+        timezone={timezone}
         onClose={() => setSelected(null)}
         onStatusChange={handleStatusChange}
       />
