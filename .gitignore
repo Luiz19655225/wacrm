@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# playwright — sessão de autenticação e relatórios (nunca commitar)
+/.playwright/
+/playwright-report/
+/test-results/
+
 # next.js
 /.next/
 /out/
