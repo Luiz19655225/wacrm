@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react"
 
 const MONTHS_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -16,6 +16,7 @@ interface AgendaHeaderProps {
   onNext: () => void
   onToday: () => void
   onSync: () => void
+  onNew?: () => void
 }
 
 export function AgendaHeader({
@@ -26,6 +27,7 @@ export function AgendaHeader({
   onNext,
   onToday,
   onSync,
+  onNew,
 }: AgendaHeaderProps) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -44,16 +46,29 @@ export function AgendaHeader({
         </Button>
       </div>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onSync}
-        disabled={syncing}
-        className="gap-1.5"
-      >
-        <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
-        {syncing ? "Sincronizando…" : "Sincronizar"}
-      </Button>
+      <div className="flex items-center gap-2">
+        {onNew && (
+          <Button
+            size="sm"
+            onClick={onNew}
+            className="gap-1.5"
+            data-testid="novo-compromisso-btn"
+          >
+            <Plus className="size-3.5" />
+            Novo compromisso
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onSync}
+          disabled={syncing}
+          className="gap-1.5"
+        >
+          <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Sincronizando…" : "Sincronizar"}
+        </Button>
+      </div>
     </div>
   )
 }

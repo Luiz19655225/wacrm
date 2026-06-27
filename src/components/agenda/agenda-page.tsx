@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { AgendaHeader } from "./agenda-header"
 import { CalendarMonthView } from "./calendar-month-view"
 import { AppointmentPanel } from "./appointment-panel"
+import { NewAppointmentDialog } from "./new-appointment-dialog"
 import type { AppointmentWithContact } from "@/lib/agenda/types"
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo"
@@ -15,9 +16,10 @@ export function AgendaPage() {
   const [month, setMonth] = useState(today.getMonth())
 
   const [appointments, setAppointments] = useState<AppointmentWithContact[]>([])
-  const [loading, setLoading]   = useState(false)
-  const [syncing, setSyncing]   = useState(false)
-  const [selected, setSelected] = useState<AppointmentWithContact | null>(null)
+  const [loading, setLoading]         = useState(false)
+  const [syncing, setSyncing]         = useState(false)
+  const [selected, setSelected]       = useState<AppointmentWithContact | null>(null)
+  const [newDialogOpen, setNewDialogOpen] = useState(false)
 
   // Compute UTC window for the visible month (full calendar grid = up to ±6 days padding)
   function monthWindow(y: number, m: number) {
@@ -110,6 +112,10 @@ export function AgendaPage() {
     }
   }
 
+  function handleCreated() {
+    void loadAppointments(year, month)
+  }
+
   return (
     <div className="flex h-full flex-col">
       <AgendaHeader
@@ -120,6 +126,7 @@ export function AgendaPage() {
         onNext={goToNext}
         onToday={goToToday}
         onSync={handleSync}
+        onNew={() => setNewDialogOpen(true)}
       />
 
       {loading ? (
@@ -141,6 +148,12 @@ export function AgendaPage() {
         timezone={DEFAULT_TIMEZONE}
         onClose={() => setSelected(null)}
         onStatusChange={handleStatusChange}
+      />
+
+      <NewAppointmentDialog
+        open={newDialogOpen}
+        onOpenChange={setNewDialogOpen}
+        onCreated={handleCreated}
       />
     </div>
   )

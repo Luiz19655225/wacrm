@@ -187,4 +187,62 @@ test.describe('Agenda WAVON — Validação pós-consolidação multi-calendári
     expect(criticalErrors, 'Não devem existir erros críticos de console').toHaveLength(0)
   })
 
+  // ─── Teste 9 ──────────────────────────────────────────────────────────────
+  test('9. Botão "Novo compromisso" existe e está visível na Agenda', async ({ page }) => {
+    await page.goto('/agenda')
+
+    const btn = page.getByTestId('novo-compromisso-btn')
+    await expect(btn).toBeVisible({ timeout: 10_000 })
+    await expect(btn).toBeEnabled()
+    await expect(btn).toContainText('Novo compromisso')
+  })
+
+  // ─── Teste 10 ─────────────────────────────────────────────────────────────
+  test('10. Clicar em "Novo compromisso" abre o modal', async ({ page }) => {
+    await page.goto('/agenda')
+
+    const btn = page.getByTestId('novo-compromisso-btn')
+    await expect(btn).toBeVisible({ timeout: 10_000 })
+    await btn.click()
+
+    // Dialog title
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByText('Novo compromisso').last()).toBeVisible()
+
+    // Seções do modal
+    await expect(page.getByText('Cliente')).toBeVisible()
+    await expect(page.getByText('Compromisso')).toBeVisible()
+
+    console.log('   ✅ Modal "Novo compromisso" abriu corretamente.')
+  })
+
+  // ─── Teste 11 ─────────────────────────────────────────────────────────────
+  test('11. Formulário do modal contém campos obrigatórios', async ({ page }) => {
+    await page.goto('/agenda')
+
+    await page.getByTestId('novo-compromisso-btn').click()
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 })
+
+    // Busca de contato
+    await expect(page.getByTestId('contact-search')).toBeVisible()
+
+    // Campos de compromisso
+    await expect(page.getByTestId('appt-title')).toBeVisible()
+    await expect(page.getByTestId('appt-date')).toBeVisible()
+    await expect(page.getByTestId('appt-time')).toBeVisible()
+
+    // Botão de submit
+    await expect(page.getByTestId('appt-submit')).toBeVisible()
+    await expect(page.getByTestId('appt-submit')).toContainText('Salvar compromisso')
+
+    // Botão cancelar
+    await expect(page.getByRole('button', { name: /Cancelar/i })).toBeVisible()
+
+    // Fechar com Cancelar
+    await page.getByRole('button', { name: /Cancelar/i }).click()
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 3_000 })
+
+    console.log('   ✅ Todos os campos obrigatórios presentes no formulário.')
+  })
+
 })

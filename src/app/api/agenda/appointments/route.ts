@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAccountId } from '@/lib/ai/route-helpers'
 import { supabaseAdmin } from '@/lib/calendar/admin-client'
+import { getCalendarAdapter, getAccountCalendarSettings } from '@/lib/calendar'
+import { findExistingContact } from '@/lib/contacts/dedupe'
 import type { AppointmentWithContact } from '@/lib/agenda/types'
 
 /**
@@ -118,6 +120,198 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ appointments })
   } catch (err) {
     console.error('[agenda/appointments GET]', err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/agenda/appointments
+ *
+ * Fase 8.1.1 — Agendamento Comercial. Creates a new appointment from the
+ * Agenda UI, linking or creating a CRM contact, and optionally syncing
+ * the event to Google Calendar when a calendar is connected.
+ *
+ * Body: {
+ *   contact_id?:      string   // link to existing contact (optional)
+ *   contact_name:     string   // required
+ *   contact_phone:    string   // required
+ *   contact_email?:   string
+ *   contact_company?: string
+ *   title:            string   // required
+ *   start_at:         string   // UTC ISO, required
+ *   end_at:           string   // UTC ISO, required
+ *   reason?:          string
+ *   notes?:           string
+ *   assigned_user_id?: string
+ * }
+ *
+ * Response: { success, appointment_id, calendar_synced, online_meeting_url }
+ *
+ * Google Calendar failure is non-blocking: the appointment is always
+ * saved locally; calendar_synced = false indicates the sync didn't happen.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const accountId = await resolveAccountId(supabase, user.id)
+    if (!accountId) return NextResponse.json({ error: 'Conta não encontrada.' }, { status: 403 })
+
+    const body = await request.json() as {
+      contact_id?: string
+      contact_name?: string
+      contact_phone?: string
+      contact_email?: string
+      contact_company?: string
+      title?: string
+      start_at?: string
+      end_at?: string
+      reason?: string
+      notes?: string
+      assigned_user_id?: string
+    }
+
+    // ── Validation ─────────────────────────────────────────────────────────────
+    if (!body.contact_name?.trim()) {
+      return NextResponse.json({ error: 'Nome do cliente é obrigatório.' }, { status: 400 })
+    }
+    if (!body.contact_phone?.trim()) {
+      return NextResponse.json({ error: 'Celular do cliente é obrigatório.' }, { status: 400 })
+    }
+    if (!body.title?.trim()) {
+      return NextResponse.json({ error: 'Título do compromisso é obrigatório.' }, { status: 400 })
+    }
+    if (!body.start_at || !body.end_at) {
+      return NextResponse.json({ error: 'Data e hora são obrigatórios.' }, { status: 400 })
+    }
+
+    // ── 1. Resolve or create contact ───────────────────────────────────────────
+    let contactId: string | null = null
+
+    if (body.contact_id) {
+      const { data: existing } = await supabaseAdmin()
+        .from('contacts')
+        .select('id')
+        .eq('id', body.contact_id)
+        .eq('account_id', accountId)
+        .maybeSingle()
+      if (existing) contactId = existing.id as string
+    }
+
+    if (!contactId) {
+      const found = await findExistingContact(supabaseAdmin(), accountId, body.contact_phone.trim())
+      if (found) {
+        contactId = found.id
+        // Fill in missing email / company if the user provided them
+        const patch: Record<string, unknown> = {}
+        if (body.contact_email?.trim() && !(found as { email?: string }).email) {
+          patch.email = body.contact_email.trim()
+        }
+        if (body.contact_company?.trim() && !(found as { company?: string }).company) {
+          patch.company = body.contact_company.trim()
+        }
+        if (Object.keys(patch).length > 0) {
+          patch.updated_at = new Date().toISOString()
+          await supabaseAdmin().from('contacts').update(patch).eq('id', contactId)
+        }
+      } else {
+        // Create new contact
+        const { data: newContact, error: createError } = await supabaseAdmin()
+          .from('contacts')
+          .insert({
+            account_id: accountId,
+            user_id: user.id,
+            name: body.contact_name.trim(),
+            phone: body.contact_phone.trim(),
+            email: body.contact_email?.trim() || null,
+            company: body.contact_company?.trim() || null,
+          })
+          .select('id')
+          .single()
+
+        if (createError || !newContact) {
+          console.error('[agenda/appointments POST] create contact:', createError)
+          return NextResponse.json({ error: 'Erro ao criar contato no CRM.' }, { status: 500 })
+        }
+        contactId = newContact.id as string
+      }
+    }
+
+    // ── 2. Try Google Calendar sync (non-blocking) ─────────────────────────────
+    let providerType: 'GOOGLE' | 'OUTLOOK' | 'LOCAL' = 'LOCAL'
+    let externalEventId: string | null = null
+    let onlineMeetingUrl: string | null = null
+    let calendarSynced = false
+
+    try {
+      const [adapter, settings] = await Promise.all([
+        getCalendarAdapter(accountId),
+        getAccountCalendarSettings(accountId),
+      ])
+
+      if (adapter && settings) {
+        const descriptionParts = [
+          body.reason ? `Motivo: ${body.reason.trim()}` : null,
+          body.notes  ? `Observações: ${body.notes.trim()}` : null,
+          `Criado via WAVON Agenda`,
+        ].filter(Boolean) as string[]
+
+        const created = await adapter.createAppointment({
+          title:                body.title!.trim(),
+          startISO:             body.start_at,
+          endISO:               body.end_at,
+          description:          descriptionParts.join('\n'),
+          attendeeEmail:        body.contact_email?.trim() || null,
+          attendeeName:         body.contact_name.trim(),
+          requestOnlineMeeting: true,
+        })
+
+        providerType     = settings.providerType
+        externalEventId  = created.externalEventId
+        onlineMeetingUrl = created.onlineMeetingUrl
+        calendarSynced   = true
+      }
+    } catch (err) {
+      console.error('[agenda/appointments POST] calendar sync:', err)
+      // Non-blocking — continue with LOCAL provider
+    }
+
+    // ── 3. Insert appointment ──────────────────────────────────────────────────
+    const { data: appt, error: insertError } = await supabaseAdmin()
+      .from('calendar_appointments')
+      .insert({
+        account_id:        accountId,
+        contact_id:        contactId,
+        provider_type:     providerType,
+        external_event_id: externalEventId,
+        title:             body.title!.trim(),
+        start_at:          body.start_at,
+        end_at:            body.end_at,
+        online_meeting_url: onlineMeetingUrl,
+        status:            'scheduled',
+        reason:            body.reason?.trim() || null,
+        notes:             body.notes?.trim() || null,
+        origin:            'Manual',
+        assigned_user_id:  body.assigned_user_id || null,
+      })
+      .select('id')
+      .single()
+
+    if (insertError) {
+      console.error('[agenda/appointments POST] insert:', insertError)
+      return NextResponse.json({ error: 'Erro ao salvar compromisso.' }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success:           true,
+      appointment_id:    appt.id,
+      calendar_synced:   calendarSynced,
+      online_meeting_url: onlineMeetingUrl,
+    })
+  } catch (err) {
+    console.error('[agenda/appointments POST]', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }
