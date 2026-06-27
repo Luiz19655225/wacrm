@@ -13,10 +13,10 @@ test.describe('Agenda WAVON — Validação pós-consolidação multi-calendári
   test('2. Interface da Agenda renderiza corretamente', async ({ page }) => {
     await page.goto('/agenda')
 
-    // Cabeçalho dos dias da semana deve estar visível
-    await expect(page.getByText('Dom')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText('Seg')).toBeVisible()
-    await expect(page.getByText('Ter')).toBeVisible()
+    // Cabeçalho dos dias da semana deve estar visível (exact evita conflito com select options)
+    await expect(page.getByText('Dom', { exact: true })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Seg', { exact: true })).toBeVisible()
+    await expect(page.getByText('Ter', { exact: true })).toBeVisible()
 
     // Botão de navegação "Hoje" deve existir
     await expect(page.getByRole('button', { name: /Hoje/i })).toBeVisible()
