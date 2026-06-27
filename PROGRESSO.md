@@ -103,10 +103,61 @@ Pendências (ações manuais necessárias antes do deploy):
 - [ ] Commit, push e deploy da Fase 7.2
 - [ ] Validar em produção: Configurações → Agenda → conectar Outlook → configurar horário comercial → testar resposta da IA fora do horário → testar agendamento pelo Inbox
 
-## Status geral
-Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG) + Widget IA no site. Todas as migrations até `035` aplicadas em produção.
+## Fase 7.3 — Agendamento Inteligente 2.0 + WAVI
+✅ Concluída e validada em produção (commits `b57694a`, `0b5debd`, `453b534`)
 
-Fase 7.2 (Agendamento Inteligente) implementada localmente, aguardando Azure App registration + migration `036` + Vercel env vars para commit/deploy.
+- [x] IA sempre ativa para agendamento (não só fora do horário)
+- [x] 5 campos obrigatórios antes de qualquer slot (nome, celular, WhatsApp, e-mail, motivo)
+- [x] Marcador semântico `[AGENDAR]` — slots nunca aparecem antes dos dados confirmados
+- [x] Endpoint público `/api/public/site-widget/schedule`
+- [x] Dialog 2 etapas no Inbox (form de dados → seleção de slot)
+- [x] Picker inline de horários no Widget
+- [x] Google Calendar + Google Meet integrados
+- [x] Atendente WAVI (identidade no prompt + UI do widget)
+- [x] migrations `036` aplicada em produção
+
+## Fase 8.0 — Agenda WAVON nativa
+✅ Concluída e validada em produção (commits `708d485`, `91cc29e`)
+
+- [x] Migration `037_agenda_enhancements.sql` aplicada
+- [x] `/agenda` com calendário mensal
+- [x] Item "Agenda" na sidebar (entre Negociações e Disparos)
+- [x] Painel lateral de compromissos
+- [x] API de sincronização (`POST /api/calendar/sync`)
+- [x] CRUD de compromissos
+- [x] Integração com Google Calendar (OAuth, token refresh, criação, Google Meet)
+- [x] Sincronização multi-calendário: itera todos os calendários do usuário (filtra `#holiday`/`#contacts`/`#weather`)
+- [x] Toast do botão "Sincronizar" com resultado real (eventos inseridos, atualizados, erros de auth)
+- [x] Validado com evento de teste "Teste WAVON" (27/06/2026 10:00) — apareceu corretamente na Agenda
+
+Pendência de próxima sessão (antes da Fase 8.1):
+- [ ] Commitar multi-calendário: remover logs DIAG de `adapter.ts`, then `git add src/lib/calendar/providers/google/client.ts src/lib/calendar/providers/google/adapter.ts && git commit`
+- [ ] Push + deploy após o commit
+
+Pendências não-bloqueantes:
+- Banner "Payment overdue" no Sandbox Asaas — comportamento esperado (assinatura de sandbox vencida, não é bug de código)
+- Outlook Calendar: implementado mas sem credenciais Azure
+
+## Fase 8.1 — Refinamento da Agenda (próxima sessão — aguardando aprovação)
+
+**NÃO iniciar sem aprovação explícita do usuário.**
+
+Prioridades aprovadas no encerramento de 26/06/2026:
+
+1. Sincronização automática ao abrir `/agenda` (sem precisar clicar "Sincronizar")
+2. Ocultar banner "Payment overdue" quando ambiente Sandbox
+3. Painel lateral de compromissos mais completo
+4. Badge de origem do evento: Google / Outlook / Local
+5. Destacar dia atual e quantidade de eventos no calendário mensal
+6. UX geral do calendário (navegação, hover states)
+7. Filtros por usuário, origem e status
+8. Botão "Novo compromisso" na Agenda
+9. Criar compromisso diretamente no WAVON, sincronizando automaticamente com Google Calendar
+10. Timezone dinâmico por conta (usando `calendar_settings.timezone`)
+
+## Status geral
+Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG) + Widget IA no site + **Agenda nativa com Google Calendar**. Todas as migrations até `037` aplicadas em produção.
 
 ## Próximo a planejar
+- Fase 8.1 (refinamento da Agenda) — aguardando aprovação explícita.
 - Enforcement real de billing por `access_status` (bloquear CRM/automações) — fase própria, não iniciar sem aprovação explícita.

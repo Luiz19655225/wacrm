@@ -289,7 +289,7 @@ O Google Calendar já estava completamente implementado desde a Fase 7.2 (`Googl
 
 `npm run typecheck`, `npm run lint` (0 erros, 21 warnings — todos pré-existentes) e `npm run build` limpos. Em produção sem pendências.
 
-## Fase 8.0 — Agenda WAVON (em implementação — 26/06/2026)
+## Fase 8.0 — Agenda WAVON (26/06/2026) — ✅ CONCLUÍDA e validada em produção
 
 Agenda nativa do WAVON. Google Calendar e Outlook são apenas provedores de sincronização. A tabela `calendar_appointments` é a fonte primária de todos os compromissos.
 
@@ -325,13 +325,45 @@ Alterados: `src/lib/calendar/types.ts` (+ExternalCalendarEvent, +listEvents), `s
 ### Nota de arquitetura — sync provider único
 `calendar_settings` tem UNIQUE em `account_id` (1 linha por conta), então `/api/calendar/sync` trabalha com o único provider configurado. O param `?provider=GOOGLE|OUTLOOK|ALL` atua como filtro (no-op se não bater). Multi-provider real fica para uma migration futura.
 
+### Conclusão da Fase 8.0 (sessão 26/06/2026 noite)
+
+**Fix 1 — Toast de sincronização**: `src/components/agenda/agenda-page.tsx` — `handleSync()` lê o corpo da resposta e exibe erros/resultados reais em vez de sempre retornar "sucesso". Commit `91cc29e`, deploy `dpl_9deW1HCFfdq14DzV6TkPDcJKyWwY`.
+
+**Fix 2 — Sincronização multi-calendário**: `listGoogleCalendars()` adicionada a `client.ts`; `getGoogleCalendarEvents()` recebe `calendarId` em vez de hardcoded `'primary'`; `adapter.ts` itera todos os calendários não-automáticos (filtra `#holiday`, `#contacts`, `#weather`). **Implantado em produção via Vercel CLI, NÃO commitado no git** — próxima sessão: remover logs DIAG de `adapter.ts`, commitar `client.ts` + `adapter.ts`.
+
+**Causa raiz descoberta**: calendário primário (`luizabrahao09@gmail.com`) estava vazio; "Desafio Fast Dólar Youtube" sem eventos na janela −30/+365 dias. A sincronização funciona — validada com evento de teste "Teste WAVON" (27/06/2026 às 10:00) que apareceu imediatamente na Agenda após clicar "Sincronizar".
+
+**Billing banner "Payment overdue"**: presente no ambiente Sandbox do Asaas — comportamento esperado (assinatura de sandbox com cobrança vencida). Não é bug de código. Sugestão de melhoria registrada para a Fase 8.1: ocultar quando `ASAAS_ENVIRONMENT=sandbox`.
+
+## Fase 8.1 — Refinamento da Agenda (próxima sessão — aguardando aprovação)
+
+**NÃO iniciar sem aprovação explícita do usuário.**
+
+Prioridades aprovadas no encerramento de 26/06/2026:
+
+1. Sincronização automática ao abrir `/agenda` (sem precisar clicar "Sincronizar")
+2. Ocultar banner "Payment overdue" quando ambiente Sandbox
+3. Painel lateral de compromissos mais completo
+4. Badge de origem do evento: Google / Outlook / Local
+5. Destacar dia atual e quantidade de eventos no calendário mensal
+6. UX geral do calendário (navegação, hover states)
+7. Filtros por usuário, origem e status
+8. Botão "Novo compromisso" na Agenda
+9. Criar compromisso diretamente no WAVON sincronizando automaticamente com Google Calendar
+10. Timezone dinâmico por conta (usando `calendar_settings.timezone`)
+
+**Ação necessária antes de qualquer item acima**: commitar o Fix 2 do multi-calendário.
+
 ## Pendências abertas
 Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
 
-Fases 2 a 7.3 fechadas e em produção — migrations `024` a `036` aplicadas. Migration `037` em implementação.
+Fases 2 a 8.0 concluídas e em produção — migrations `024` a `037` aplicadas.
+
+**Pendência de próxima sessão (antes de iniciar a Fase 8.1)**:
+- Commitar multi-calendário: remover logs DIAG de `src/lib/calendar/providers/google/adapter.ts`, then `git add` + commit + push + `npx vercel --prod`.
 
 Pendências não-bloqueantes:
-- Adicionar `SUBSCRIPTION_INACTIVATED` + `SUBSCRIPTION_DELETED` ao webhook Asaas Sandbox (ação manual no painel Asaas) — não relacionada às demais fases.
+- Adicionar `SUBSCRIPTION_INACTIVATED` + `SUBSCRIPTION_DELETED` ao webhook Asaas Sandbox (ação manual no painel Asaas).
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`). Configurável por quem criar um Azure App Registration (instruções na Fase 7.2).
 
@@ -346,8 +378,9 @@ WAVON em produção (`www.wavon.com.br`) com:
 - Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`)
 - Widget de atendimento IA no site público (coleta nome + WhatsApp + e-mail), conversas chegando ao Inbox normal
 - **Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1)**: IA sempre ativa para agendamento; coleta obrigatória de 5 campos com marcador semântico `[AGENDAR]` (slots nunca aparecem antes dos dados); Google Calendar com Google Meet; endpoint público `/api/public/site-widget/schedule`; dialog 2 etapas no Inbox; picker inline no Widget; atendente WAVI — tudo em produção
+- **Agenda nativa (Fase 8.0)**: `/agenda` com calendário mensal, sincronização Google Calendar (multi-calendário), painel lateral de compromissos, item na sidebar — validado em produção
 
-Todas as migrations até `036` aplicadas em produção.
+Todas as migrations até `037` aplicadas em produção.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

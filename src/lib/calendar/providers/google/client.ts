@@ -177,6 +177,33 @@ export async function deleteGoogleCalendarEvent(
   )
 }
 
+// ─── Calendar list (for sync — all-calendars support) ────────────────────────
+
+export interface GoogleCalendarListEntry {
+  id: string
+  summary: string
+  primary?: boolean
+}
+
+interface GoogleCalendarListResponse {
+  items?: GoogleCalendarListEntry[]
+}
+
+/**
+ * Returns all calendars visible to this user (via calendarList).
+ * Used by listEvents() to sync across all user-owned calendars instead of
+ * just 'primary'.
+ */
+export async function listGoogleCalendars(
+  accessToken: string,
+): Promise<GoogleCalendarListEntry[]> {
+  const data = await googleFetch<GoogleCalendarListResponse>(
+    accessToken,
+    `https://www.googleapis.com/calendar/v3/users/me/calendarList`,
+  )
+  return data.items ?? []
+}
+
 // ─── Event list (for sync) ────────────────────────────────────────────────────
 
 interface GoogleEventsListResponse {
@@ -206,14 +233,17 @@ export interface GoogleCalendarEventResult {
 }
 
 /**
- * Fetches all events from the primary Google Calendar within the given UTC
- * window. Includes cancelled events (showDeleted=true) so the sync can mark
- * locally-cached appointments as cancelled when the user deletes them in
- * Google Calendar. Handles a single page — maxResults=2500 covers typical
- * business calendars without needing pagination.
+ * Fetches all events from the given Google Calendar within the UTC window.
+ * Pass calendarId = 'primary' for the user's main calendar, or the calendar's
+ * full ID for secondary calendars.
+ *
+ * Includes cancelled events (showDeleted=true) so the sync can mark
+ * locally-cached appointments as cancelled when the user removes them.
+ * maxResults=2500 covers typical business calendars without pagination.
  */
 export async function getGoogleCalendarEvents(
   accessToken: string,
+  calendarId: string,
   startISO: string,
   endISO: string,
 ): Promise<GoogleCalendarEventResult[]> {
@@ -228,7 +258,7 @@ export async function getGoogleCalendarEvents(
 
   const data = await googleFetch<GoogleEventsListResponse>(
     accessToken,
-    `${CALENDAR_BASE}/calendars/primary/events?${params}`,
+    `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
   )
 
   return (data.items ?? []).map((item) => {
