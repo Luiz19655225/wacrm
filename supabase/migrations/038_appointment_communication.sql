@@ -88,7 +88,9 @@ ALTER TABLE appointment_comm_log ENABLE ROW LEVEL SECURITY;
 
 -- Any account member may read the log for their own account's appointments.
 -- All writes go through supabaseAdmin (service role), which bypasses RLS.
-CREATE POLICY IF NOT EXISTS "comm_log_select"
+DROP POLICY IF EXISTS "comm_log_select" ON appointment_comm_log;
+
+CREATE POLICY "comm_log_select"
   ON appointment_comm_log
   FOR SELECT
   USING (is_account_member(account_id));
