@@ -1404,4 +1404,81 @@ test.describe('Agenda WAVON — Validação pós-consolidação multi-calendári
     expect(true).toBe(true)
   })
 
+  // ─── Teste 52 ─────────────────────────────────────────────────────────────
+  test('52. Página /analytics carrega sem erro', async ({ page }) => {
+    const response = await page.goto('/analytics')
+    expect(response?.status(), 'Página /analytics deve retornar status < 400').toBeLessThan(400)
+    expect(page.url()).toContain('/analytics')
+  })
+
+  // ─── Teste 53 ─────────────────────────────────────────────────────────────
+  test('53. /analytics renderiza título e filtros globais', async ({ page }) => {
+    await page.goto('/analytics')
+    await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByTestId('analytics-filters')).toBeVisible()
+    await expect(page.getByTestId('filter-30d')).toBeVisible()
+  })
+
+  // ─── Teste 54 ─────────────────────────────────────────────────────────────
+  test('54. /analytics renderiza as 6 abas', async ({ page }) => {
+    await page.goto('/analytics')
+    const tabs = page.getByTestId('analytics-tabs')
+    await expect(tabs).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByTestId('tab-trigger-comercial')).toBeVisible()
+    await expect(page.getByTestId('tab-trigger-agenda')).toBeVisible()
+    await expect(page.getByTestId('tab-trigger-comunicacao')).toBeVisible()
+    await expect(page.getByTestId('tab-trigger-usuarios')).toBeVisible()
+    await expect(page.getByTestId('tab-trigger-clientes')).toBeVisible()
+    await expect(page.getByTestId('tab-trigger-ia')).toBeVisible()
+  })
+
+  // ─── Teste 55 ─────────────────────────────────────────────────────────────
+  test('55. Aba Comercial carrega dados via API', async ({ page }) => {
+    const apiPromise = page.waitForResponse(
+      resp => resp.url().includes('/api/analytics/comercial'),
+      { timeout: 20_000 },
+    )
+    await page.goto('/analytics')
+    const resp = await apiPromise
+    expect(resp.status()).toBe(200)
+    await expect(page.getByTestId('tab-comercial')).toBeVisible({ timeout: 15_000 })
+  })
+
+  // ─── Teste 56 ─────────────────────────────────────────────────────────────
+  test('56. Aba Agenda carrega ao clicar', async ({ page }) => {
+    await page.goto('/analytics')
+    const apiPromise = page.waitForResponse(
+      resp => resp.url().includes('/api/analytics/agenda'),
+      { timeout: 20_000 },
+    )
+    await page.getByTestId('tab-trigger-agenda').click()
+    const resp = await apiPromise
+    expect(resp.status()).toBe(200)
+    await expect(page.getByTestId('tab-agenda')).toBeVisible({ timeout: 15_000 })
+  })
+
+  // ─── Teste 57 ─────────────────────────────────────────────────────────────
+  test('57. Filtro "Hoje" dispara nova requisição', async ({ page }) => {
+    await page.goto('/analytics')
+    await page.getByTestId('tab-comercial').waitFor({ timeout: 15_000 })
+    const apiPromise = page.waitForResponse(
+      resp => resp.url().includes('/api/analytics/comercial') && resp.url().includes('from='),
+      { timeout: 15_000 },
+    )
+    await page.getByTestId('filter-today').click()
+    const resp = await apiPromise
+    expect(resp.status()).toBe(200)
+  })
+
+  // ─── Teste 58 ─────────────────────────────────────────────────────────────
+  test('58. Regressão — páginas anteriores intactas após Fase 8.6', async ({ page }) => {
+    const routes = ['/dashboard-executivo', '/observabilidade', '/agenda']
+    for (const route of routes) {
+      const resp = await page.goto(route)
+      expect(resp?.status(), `${route} deve retornar status < 400`).toBeLessThan(400)
+    }
+    console.log('   ✅ Regressão OK — /dashboard-executivo, /observabilidade e /agenda intactos após Fase 8.6')
+    expect(true).toBe(true)
+  })
+
 })
