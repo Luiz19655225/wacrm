@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const raw = parseInt(url.searchParams.get('days') ?? '7', 10)
     const days = ([7, 14, 30] as const).includes(raw as 7 | 14 | 30) ? (raw as 7 | 14 | 30) : 7
-    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
     const dates = buildDateSeries(days)
+    const from = `${dates[0]}T00:00:00.000Z`
 
     const countByDate = (timestamps: string[]) => {
       const map = Object.fromEntries(dates.map(d => [d, 0]))

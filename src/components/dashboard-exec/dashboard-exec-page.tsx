@@ -107,23 +107,22 @@ export function DashboardExecPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/dashboard-exec/resumo").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/dashboard-exec/series?days=7").then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([r, s]) => {
-        setResumo(r as ResumoData | null)
-        setSeries(s as SeriesData | null)
-      })
+    const ctrl = new AbortController()
+    fetch("/api/dashboard-exec/resumo", { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => setResumo(r as ResumoData | null))
       .catch(() => undefined)
       .finally(() => setLoading(false))
+    return () => ctrl.abort()
   }, [])
 
   useEffect(() => {
-    fetch(`/api/dashboard-exec/series?days=${chartDays}`)
+    const ctrl = new AbortController()
+    fetch(`/api/dashboard-exec/series?days=${chartDays}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((s) => s && setSeries(s as SeriesData))
       .catch(() => undefined)
+    return () => ctrl.abort()
   }, [chartDays])
 
   if (loading) {

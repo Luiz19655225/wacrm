@@ -85,7 +85,8 @@ export async function GET() {
         .select('connection_status')
         .eq('account_id', accountId)
         .eq('provider', 'EVOLUTION')
-        .maybeSingle(),
+        .order('created_at', { ascending: false })
+        .limit(1),
     ])
 
     // Billing — plan details require a separate query after subscription is known
@@ -168,7 +169,7 @@ export async function GET() {
       },
       integrations: {
         googleCalendar: (calResult.data?.is_enabled as boolean | null) === true,
-        evolutionApi: (evoResult.data?.connection_status as string | null) === 'connected',
+        evolutionApi: (evoResult.data?.[0]?.connection_status as string | null) === 'connected',
         cronConfigured: !!(process.env.AUTOMATION_CRON_SECRET),
       },
     })
