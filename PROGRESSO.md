@@ -180,21 +180,88 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 - `CREATE POLICY IF NOT EXISTS` não existe no PostgreSQL — usar `DROP POLICY IF EXISTS` + `CREATE POLICY`
 - `ADD COLUMN IF NOT EXISTS` com `CHECK` inline em statement multi-coluna causa syntax error no Supabase — separar cada coluna em `ALTER TABLE` individual
 
-## Status geral (27/06/2026)
-Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `038` aplicadas.
+## Fase 8.2 — Comunicação Automática via WhatsApp
+✅ Concluída e validada em produção (commit `294dc02`) — deploy `dpl_2vEwbf1UYX98LManozbSZcKzFz4F`
+
+- [x] `src/lib/agenda/intent-detector.ts`: detecção de intenção em texto livre (sim/ok/confirmado/cancelar/reagendar) sem LLM — função pura, normalização NFD
+- [x] `src/lib/agenda/whatsapp-notifier.ts`: envia mensagem WhatsApp via Evolution API + loga em `appointment_comm_log` + `tryLinkConversation()` non-blocking
+- [x] `src/lib/agenda/comm-dispatcher.ts`: orquestrador `Agenda → WhatsApp → (Email/Push futuros)` — rotas nunca chamam notificador diretamente; `DispatchResult.sent: boolean` agrega todos os canais
+- [x] `POST /api/agenda/appointments`: `after()` dispara `appointment_created` após INSERT
+- [x] `PATCH /api/agenda/appointments/[id]`: `after()` dispara `appointment_cancelled`/`appointment_rescheduled`
+- [x] `evolution-webhook-processor.ts`: detecta intenção em replies do cliente → atualiza status do compromisso (janela 72h)
+- [x] Testes Playwright 28–34 adicionados — **34/34 passando em produção**
+
+## Fase 8.3 — Lembretes Automáticos via Cron
+✅ Concluída, cron ativo e validado em produção (commits `7a1035c`, `271d3db`) — deploy `dpl_Yp5DdQjHiV2k1LFAFbEQwCJUxFcn`
+
+- [x] Migration `039_reminder_sent_columns.sql` aplicada: 3 colunas dedup (`reminder_24h/2h/30min_sent_at`) + função `claim_reminder_appointments` (CTE + `FOR UPDATE SKIP LOCKED` — dedup atômico, padrão job-queue PostgreSQL)
+- [x] `GET /api/agenda/reminders/cron`: autenticado por `x-cron-secret: AUTOMATION_CRON_SECRET`; 3 janelas por execução (24h±15min, 2h±15min, 30min±10min); retry em falha (limpa `sent_at = NULL`); cron nunca referencia canais (só `result.sent`)
+- [x] `vercel.json = {}` — Vercel Hobby não suporta cron a cada 15 min; cron externo via cron-job.org
+- [x] Cron externo configurado no cron-job.org (28/06/2026): `GET https://www.wavon.com.br/api/agenda/reminders/cron` + header `x-cron-secret` — **HTTP 200 OK validado manualmente**
+- [x] Testes Playwright 35–38 adicionados — **38/38 passando em produção**
+- [ ] Verificar na próxima sessão: 2 jobs identificados no cron-job.org para a mesma URL — confirmar se duplicados e manter apenas 1 (não bloqueante — endpoint tem dedup atômico)
+
+## Fase 8.4 — Observabilidade e Monitoramento
+✅ Concluída e validada em produção (commit `7df3382`) — deploy `dpl_7hyzC4bWeFwU8k5sp9aaQWtLACoM`
+
+- [x] Nova rota `/observabilidade` na sidebar (ícone Activity, entre Agenda e Disparos)
+- [x] 3 abas: Agenda (KPIs por período + próximos 24h), Comunicação (comm_log stats), Integrações (GCal + Evolution + Cron)
+- [x] `GET /api/observabilidade/agenda?period=today|week|month`
+- [x] `GET /api/observabilidade/comunicacao?days=7|14|30`
+- [x] `GET /api/observabilidade/integrations`
+- [x] Testes Playwright 39–44 adicionados — **44/44 passando em produção**
+
+## Fase 8.5 — Dashboard Executivo
+✅ Concluída e validada em produção (commit `8d096da`) — deploy `dpl_8M4sYKcLVtEDhyvdc4ex3doG2Nes`
+
+- [x] Nova rota `/dashboard-executivo` na sidebar (ícone BarChart2, entre Dashboard e Inbox)
+- [x] `GET /api/dashboard-exec/resumo`: billing (plano, status), contatos CRM, taxas da Agenda (últimos 30d), pipeline por estágio, volume WhatsApp, saúde das integrações
+- [x] `GET /api/dashboard-exec/series?days=7|14|30`: séries temporais diárias de mensagens e compromissos
+- [x] 4 KPI cards: plano atual, contatos, compromissos (hoje/semana/mês), mensagens WhatsApp
+- [x] 4 cards de taxa da Agenda: confirmação, cancelamento, reagendamento, não compareceu
+- [x] 2 bar charts com seletor 7/14/30d (recharts BarChart): mensagens por dia e compromissos por dia
+- [x] Pipeline por estágio (horizontal bar chart) + saúde das integrações
+- [x] Validado em produção: WAVON Pro, 10 contatos, 100% confirmação, 2.384 msgs/7d
+- [x] Testes Playwright 45–51 adicionados — **51/51 passando em produção**
+
+### Correções pós code-review (commit `faf9972`) — deploy `dpl_9bM4faVgqRBPpwVuvR7NCFhnERx3`
+- [x] `resumo/route.ts`: `.maybeSingle()` em `account_connections` → `.order(created_at, desc).limit(1)` — evita PGRST116 quando conta tem múltiplas linhas EVOLUTION (reconexão com instance name diferente)
+- [x] `series/route.ts`: `from` derivado de `${dates[0]}T00:00:00.000Z` em vez de `now − days*24h` — elimina off-by-one que descartava ~24h de dados silenciosamente por chamada
+- [x] `dashboard-exec-page.tsx`: dois `useEffect` separados com `AbortController` próprio — elimina fetch duplo no mount, cancela requisições antigas ao trocar período (7/14/30d) rapidamente
+
+## Status geral (28/06/2026)
+Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas.
 
 Funcionalidades ativas:
-- CRM (Contatos, Pipeline/Negociações, Automações)
-- Inbox com WhatsApp via Evolution API (inbound + outbound + mídias)
-- Respostas rápidas ("/atalho" no composer)
-- IA via OpenAI (Responses API, chave própria por conta, criptografada)
-- Assistente IA no Inbox: sugerir resposta, resumir, classificar lead
-- Base de Conhecimento: Perfil, Produtos, FAQ, Objetivos, Regras, Documentos (RAG)
-- Widget IA no site público (atendente WAVI + agendamento inteligente)
-- Agenda nativa: calendário mensal, sincronização Google Calendar, filtros, criação de compromissos, ações de status, comunicação inteligente
-- **27/27 testes Playwright passando em produção**
+- ✅ CRM (Contatos, Pipeline/Negociações, Automações)
+- ✅ Inbox com WhatsApp via Evolution API (inbound + outbound + mídias)
+- ✅ Respostas rápidas ("/atalho" no composer)
+- ✅ IA via OpenAI (Responses API, chave própria por conta, criptografada)
+- ✅ Assistente IA no Inbox: sugerir resposta, resumir, classificar lead
+- ✅ Base de Conhecimento: Perfil, Produtos, FAQ, Objetivos, Regras, Documentos (RAG)
+- ✅ Widget IA no site público (atendente WAVI + agendamento inteligente)
+- ✅ Agenda nativa: calendário mensal, sincronização Google Calendar (multi-calendário), filtros, criação de compromissos, ações de status, comunicação inteligente, histórico de comunicação
+- ✅ Comunicação automática via WhatsApp (confirmação + reagendamento + cancelamento)
+- ✅ Lembretes automáticos via cron (24h, 2h, 30min — ativo em produção via cron-job.org)
+- ✅ Observabilidade e Monitoramento (/observabilidade — Agenda, Comunicação, Integrações)
+- ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
+- ✅ **51/51 testes Playwright passando em produção**
 
-## Próximo a planejar
-- Fase 8.2 (a definir) — aguardando aprovação explícita.
+## Fase 8.4 — Observabilidade e Monitoramento
+✅ Concluída e validada em produção (commit `7df3382`, deploy `dpl_7hyzC4bWeFwU8k5sp9aaQWtLACoM`)
+
+- [x] Nova rota `/observabilidade` na sidebar (ícone Activity, entre Agenda e Disparos)
+- [x] Tab **Agenda**: KPIs por período (hoje/semana/mês) — total, por status, lembretes enviados (24h/2h/30min), por origem, produtividade por responsável, próximos compromissos nas próximas 24h
+- [x] Tab **Comunicação**: log de eventos por tipo, total enviado, erros, taxa de erro, registro recente dos últimos 7/14/30 dias
+- [x] Tab **Integrações**: status Google Calendar (conectado, timezone), Evolution API (status, instância), Cron (configurado, lembretes/24h)
+- [x] 3 APIs novas: `/api/observabilidade/{agenda,comunicacao,integrations}`
+- [x] Testes 39–44 adicionados — **44/44 passando em produção**
+
+Dados reais confirmados nos testes: GCal conectado, Evolution connected, Cron ativo.
+
+## Próxima fase
+
+Pendências não-bloqueantes:
 - Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`).
+- Logs temporários em `evolution-webhook-processor.ts` (`// TEMP DIAGNOSTIC LOG`) — remover quando estável.

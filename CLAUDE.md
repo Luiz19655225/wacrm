@@ -453,10 +453,106 @@ Puramente aditiva. Aplicada e validada em produção.
 
 Testes Playwright 23–27 adicionados — **27/27 passando em produção**
 
-**Ação necessária antes de qualquer item acima**: commitar o Fix 2 do multi-calendário.
+## Fase 8.3 — Lembretes Automáticos via Cron (27/06/2026) — ✅ CONCLUÍDA
+Commits `7a1035c` + `271d3db`. Deploy `dpl_Yp5DdQjHiV2k1LFAFbEQwCJUxFcn`. Migration `039` aplicada. 38/38 testes Playwright.
+
+### Migration 039 — `039_reminder_sent_columns.sql`
+Puramente aditiva. 3 colunas `TIMESTAMPTZ` em `calendar_appointments` (dedup) + função SQL atômica:
+- `reminder_24h_sent_at`, `reminder_2h_sent_at`, `reminder_30min_sent_at` (NULL = elegível, NOT NULL = enviado)
+- `claim_reminder_appointments(p_col, p_lower, p_upper, p_limit)` — CTE + `FOR UPDATE SKIP LOCKED` (padrão job-queue PostgreSQL) — atomicamente seleciona e marca linhas elegíveis para evitar race condition em execuções simultâneas do cron. `SECURITY DEFINER SET search_path = public`. Valida `p_col` contra whitelist antes de executar SQL dinâmico via `format()`.
+
+### Arquitetura — 3 Ajustes obrigatórios
+
+**Ajuste 1 — Retry em falha**: `claim_reminder_appointments` seta `sent_at = NOW()` atomicamente (necessário para o lock), mas se o dispatcher retornar `result.sent = false`, o cron imediatamente limpa `reminder_Xh_sent_at = NULL` para permitir retry na próxima execução.
+
+**Ajuste 2 — Race condition eliminada**: função PostgreSQL com CTE + `FOR UPDATE SKIP LOCKED`. Dois crons simultâneos não processam o mesmo compromisso.
+
+**Ajuste 3 — Isolamento de canal**: cron nunca referencia canais. Chama `dispatchAppointmentComm({ trigger })` e verifica apenas `result.sent` (campo agregado em `DispatchResult`). Canais futuros (email, push) adicionados apenas no dispatcher.
+
+### Novos arquivos
+- `supabase/migrations/039_reminder_sent_columns.sql`
+- `src/app/api/agenda/reminders/cron/route.ts` — `GET` autenticado por `x-cron-secret: AUTOMATION_CRON_SECRET` (mesmo padrão de `/api/automations/cron`). 3 janelas por execução: 24h±15min, 2h±15min, 30min±10min. Retorna `{ ok, processed: { h24, h2, min30 }, errors, timestamp }`.
+
+### Modificações
+- `src/lib/agenda/comm-dispatcher.ts`: `DispatchResult` ganha campo `sent: boolean` (agrega todos os canais).
+- `src/lib/agenda/types.ts`: `AppointmentWithContact` ganha `reminder_24h_sent_at`, `reminder_2h_sent_at`, `reminder_30min_sent_at`.
+- `src/app/api/agenda/appointments/route.ts` (GET): SELECT e mapping incluem os 3 novos campos.
+- `vercel.json`: mantido como `{}` — Vercel Hobby não suporta cron a cada 15 min.
+- `tests/e2e/agenda-validation.spec.ts`: Testes 35–38 adicionados.
+
+### Cron externo — ATIVO (28/06/2026)
+Configurado e validado em produção via cron-job.org:
+- URL: `GET https://www.wavon.com.br/api/agenda/reminders/cron`
+- Header: `x-cron-secret: <AUTOMATION_CRON_SECRET>`
+- Frequência: a cada 15 minutos
+- Primeira execução manual: **HTTP 200 OK** — "Execução do Cronjob: Bem-sucedida"
+- Lembretes automáticos oficialmente ativos em produção
+
+**Job único confirmado (28/06/2026)**: job duplicado (sem título, ID 7935016) removido. Permanece apenas "WAVON Lembretes - Agenda" — ativo, HTTP 200 OK validado no histórico (múltiplas execuções bem-sucedidas).
+
+### Gotcha — Vercel Hobby e cron nativo
+A conta `abracreds-projects` está no plano Hobby, que só suporta cron diário (`0 0 * * *`). Tentar `*/15 * * * *` em `vercel.json` causa erro de deploy. Solução: `vercel.json = {}` + cron externo usando `x-cron-secret`.
+
+---
+
+## Fase 8.2 — Comunicação Automática via WhatsApp (27/06/2026) — ✅ CONCLUÍDA
+Commit `294dc02`. Deploy `dpl_2vEwbf1UYX98LManozbSZcKzFz4F`. Nenhuma migration nova — usa `appointment_comm_log` da migration `038`.
+
+### Arquitetura — Dispatcher Pattern
+
+```
+Agenda (API route)
+  └─► dispatchAppointmentComm()   ← comm-dispatcher.ts
+        └─► WhatsApp notifier      ← whatsapp-notifier.ts
+              ├─► Evolution API
+              ├─► tryLinkConversation() (non-blocking)
+              └─► logCommEvent()
+```
+
+Camadas nunca cruzam: rotas nunca chamam o notificador diretamente; canais futuros (Email, Push) são adicionados apenas no dispatcher, sem tocar em nenhuma rota.
+
+### Detecção de intenção — `src/lib/agenda/intent-detector.ts`
+Função pura, sem I/O. Mapeia texto livre → `AppointmentIntent` (`confirm | reschedule | cancel | unknown`).
+- **Exactos**: `1`, `sim`, `ok`, `confirmado`, `confirmei`, `vou`, `vou sim`, `irei`, `claro`, `pode`, `pode ser`, `com certeza`; `2`, `reagendar`, `remarcar`; `3`, `cancelar`, `cancela`, `cancelado`, `nao`, `não`
+- **Parciais (contains)**: "tudo certo", "tudo bem", "ta bom"; "outro horario", "mudar horario", "quero reagendar"; "nao vou", "nao posso", "quero cancelar"
+- Normalização NFD remove acentos antes de comparar
+
+### Notificador WhatsApp — `src/lib/agenda/whatsapp-notifier.ts`
+Nunca lança. Busca compromisso+contato, localiza connection Evolution (`provider='EVOLUTION'`, `connection_status='connected'`), lê timezone de `calendar_settings`, monta mensagem em pt-BR, envia via `sendTextMessage()`, chama `tryLinkConversation()` (non-blocking), loga em `appointment_comm_log`.
+
+Templates por trigger:
+- `appointment_created`: saudação + data/hora + motivo + "1️⃣ Confirmar / 2️⃣ Reagendar / 3️⃣ Cancelar"
+- `appointment_cancelled`: aviso de cancelamento
+- `appointment_rescheduled`: aviso de reagendamento, agente entrará em contato
+- `reminder_24h/2h/30min`: implementados, aguardam cron (Fase 8.3)
+
+### Dispatcher — `src/lib/agenda/comm-dispatcher.ts`
+`CommTrigger`: `appointment_created | appointment_cancelled | appointment_rescheduled | reminder_24h | reminder_2h | reminder_30min` (os 3 reminders aguardam cron da Fase 8.3).
+Verifica `comm_confirmation_enabled`/`comm_reminder_enabled` antes de despachar. Wrapper `try/catch` garante que bug no notificador nunca propaga para a rota.
+
+### Modificações em rotas
+- `POST /api/agenda/appointments`: `after(() => dispatchAppointmentComm({ trigger: 'appointment_created' }))` após INSERT bem-sucedido. Retorna `whatsapp_sent: null` (resolvido assincronamente).
+- `PATCH /api/agenda/appointments/[id]`: `after(() => dispatchAppointmentComm({ trigger: 'appointment_cancelled|rescheduled' }))` quando `status === 'cancelled' || 'rescheduled'`.
+
+### Detecção de intenção no webhook Evolution — `evolution-webhook-processor.ts`
+Após o bloco de automações, se `contentType === 'text'`:
+1. `detectAppointmentIntent(text)` — se `unknown`, encerra silenciosamente
+2. Busca compromisso ativo (`status NOT IN completed/cancelled/no_show`) com `conversation_id` matching, `start_at >= now - 72h`
+3. Mapeia intent → novo status → atualiza `calendar_appointments` + chama `logStatusChange` + `logCommEvent`
+4. Janela de 72h evita processar respostas de compromissos antigos/expirados
+5. Limitação conhecida: contatos sem conversa Evolution prévia não têm `conversation_id` linkado → intent detection não atua (normal — `tryLinkConversation()` resolve na próxima confirmação enviada)
+
+### Testes Playwright 28–34 (34/34 passando em produção)
+- **28**: GET /api/agenda/appointments inclui campos `comm_confirmation_enabled`, `comm_reminder_enabled`, `comm_channel`
+- **29**: GET /api/agenda/appointments/[invalid-id]/comm-log → `{ entries: [] }`
+- **30**: Painel mostra seção "Preferências de Comunicação" (`data-testid="comm-prefs"`)
+- **31**: Painel mostra seção "Histórico de Comunicação" (`data-testid="comm-log"`)
+- **32**: PATCH para `cancelled` retorna 200
+- **33**: POST appointments response tem campo `whatsapp_sent`
+- **34**: Smoke check — rotas GET e PATCH compiladas sem erro de import
 
 ## Pendências abertas
-Nenhuma pendência de infraestrutura aberta. Fases 2 a 8.1.4 concluídas e em produção — migrations `024` a `038` aplicadas.
+Nenhuma pendência de infraestrutura aberta. Fases 2 a 8.3 concluídas e em produção — migrations `024` a `039` aplicadas.
 
 Pendências não-bloqueantes:
 - Adicionar `SUBSCRIPTION_INACTIVATED` + `SUBSCRIPTION_DELETED` ao webhook Asaas Sandbox (ação manual no painel Asaas).
@@ -472,7 +568,72 @@ Durante o desenvolvimento do WAVON, o browser assistido (mcp__claude-in-chrome__
 - **Páginas a reutilizar** (sem abrir novas sem necessidade): WAVON, Google Calendar, Supabase, Vercel, GitHub
 - **Nunca**: excluir dados reais, revogar credenciais, expor tokens, alterar permissões de produção sem aprovação
 
-## Estado atual da plataforma (27/06/2026)
+## Fase 8.4 — Observabilidade e Monitoramento (28/06/2026) — ✅ CONCLUÍDA
+Commit `7df3382`. Deploy `dpl_7hyzC4bWeFwU8k5sp9aaQWtLACoM`. 44/44 testes Playwright.
+
+Nova rota `/observabilidade` (sidebar: ícone Activity, entre Agenda e Disparos) com 3 abas:
+
+- **Agenda**: KPIs por período (hoje/semana/mês) — byStatus, lembretes enviados (h24/h2/min30), byOrigin, produtividade por responsável, próximos compromissos/24h. API: `GET /api/observabilidade/agenda?period=today|week|month`.
+- **Comunicação**: stats de `appointment_comm_log` — byEventType, totalSent, totalErrors, errorRate, log recente. Seletor 7/14/30 dias. API: `GET /api/observabilidade/comunicacao?days=N`.
+- **Integrações**: status Google Calendar (connected, timezone, connectedAt), Evolution API (connectionStatus, instanceName, updatedAt), Cron (configured, remindersLast24h). API: `GET /api/observabilidade/integrations`.
+
+Arquivos criados:
+- `src/app/api/observabilidade/{agenda,comunicacao,integrations}/route.ts`
+- `src/app/(dashboard)/observabilidade/page.tsx`
+- `src/components/observabilidade/{observabilidade-page,agenda-dashboard,comunicacao-panel,integrations-panel}.tsx`
+
+Arquivos modificados:
+- `src/components/layout/sidebar.tsx` — Activity icon + "Observabilidade" nav item
+- `tests/e2e/agenda-validation.spec.ts` — testes 39–44
+
+## Fase 8.5 — Dashboard Executivo (28/06/2026) — ✅ CONCLUÍDA
+Commit `8d096da`. Deploy `dpl_8M4sYKcLVtEDhyvdc4ex3doG2Nes`. 51/51 testes Playwright.
+
+Nova rota `/dashboard-executivo` (sidebar: ícone BarChart2, entre Dashboard e Inbox) com visão estratégica do negócio em uma página única (sem abas).
+
+### APIs criadas
+- `GET /api/dashboard-exec/resumo` — billing (plano, status, preço), contatos CRM (total + novos/30d), taxas da Agenda nos últimos 30 dias (confirmação/cancelamento/reagendamento/no_show), pipeline por estágio, volume WhatsApp (7d/30d), saúde das integrações
+- `GET /api/dashboard-exec/series?days=7|14|30` — séries temporais diárias: mensagens WhatsApp e compromissos, com agrupamento por data UTC em JS
+
+### Arquitetura de queries
+- `supabaseAdmin()` + `accountId` explícito: `account_subscriptions`, `plans`, `calendar_appointments`, `calendar_settings`, `account_connections`
+- `createClient()` (usuário auth + RLS): `contacts`, `deals`, `pipeline_stages`, `messages`
+
+### UI (client component)
+- 4 KPI cards: Plano atual + status (accessStatus), Contatos CRM (total + novos/30d), Compromissos (hoje/semana/mês), Mensagens WhatsApp (7d/30d)
+- 4 cards de taxa da Agenda: Confirmação (verde), Cancelamento (vermelho), Reagendamento (azul), Não compareceu (laranja)
+- 2 `BarChart` recharts lado a lado com seletor 7/14/30d: Mensagens WhatsApp/dia (#3b82f6) e Compromissos/dia (#a78bfa)
+- Pipeline por estágio: `BarChart` horizontal layout="vertical" (#34d399)
+- Saúde das integrações: 3 `IntegrationBadge` (Google Calendar, Evolution API, Cron)
+
+### Arquivos criados
+- `src/app/api/dashboard-exec/resumo/route.ts`
+- `src/app/api/dashboard-exec/series/route.ts`
+- `src/app/(dashboard)/dashboard-executivo/page.tsx`
+- `src/components/dashboard-exec/dashboard-exec-page.tsx`
+
+### Arquivos modificados
+- `src/components/layout/sidebar.tsx` — BarChart2 icon + "Exec. Dashboard" nav item
+- `tests/e2e/agenda-validation.spec.ts` — testes 45–51
+
+### Validado em produção com dados reais
+- Plano: WAVON Pro · Status: Ativo
+- Contatos: 10
+- Taxa de confirmação: 100%
+- Mensagens WhatsApp últimos 7 dias: 2.384
+
+### Correções pós code-review (commit `faf9972`) — deploy `dpl_9bM4faVgqRBPpwVuvR7NCFhnERx3`
+Aplicadas antes de iniciar a Fase 8.6. 51/51 testes continuam passando.
+- `resumo/route.ts:84` — `.maybeSingle()` em `account_connections` → `.order(created_at, desc).limit(1)`: previne PGRST116 quando existem múltiplas linhas EVOLUTION (ex: reconexão com instance name diferente); mesmo padrão já corrigido em `channels/connections/route.ts` na Fase 3
+- `series/route.ts:31` — `from` agora derivado de `${dates[0]}T00:00:00.000Z` (início UTC da primeira data da série) em vez de `now − days*24h`: elimina off-by-one que descartava silenciosamente ~24h de dados por chamada de gráfico
+- `dashboard-exec-page.tsx:109` — dois `useEffect` separados, cada um com `AbortController` próprio: elimina fetch duplo em `series?days=7` no mount e garante cancelamento de requisições antigas ao trocar o período (7d/14d/30d) rapidamente
+
+## Próxima fase planejada
+A definir.
+
+---
+
+## Estado atual da plataforma (28/06/2026 — Fase 8.3 100% concluída)
 WAVON em produção (`www.wavon.com.br`) com:
 - CRM (Contatos, Pipeline/Negociações, Automações)
 - Inbox com WhatsApp via Evolution API (inbound + outbound + mídias validados)
@@ -483,9 +644,9 @@ WAVON em produção (`www.wavon.com.br`) com:
 - Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica — serviço desacoplado (`src/lib/ai/rag/`)
 - Widget de atendimento IA no site público (atendente WAVI, coleta nome + WhatsApp + e-mail + motivo)
 - Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1): IA sempre ativa, marcador `[AGENDAR]`, Google Calendar + Meet, dialog 2 etapas no Inbox, picker inline no Widget
-- **Agenda nativa (Fases 8.0–8.1.4)**: calendário mensal, sincronização Google Calendar (multi-calendário), filtros (Responsável/Origem/Status), criação de compromissos ("Novo compromisso"), ações de status (Confirmar/Não compareceu/Reagendar/Cancelar/Concluído), preferências de comunicação por compromisso, histórico de alterações — **27/27 testes Playwright passando em produção**
+- **Agenda nativa (Fases 8.0–8.3)**: calendário mensal, sincronização Google Calendar (multi-calendário), filtros, criação de compromissos ("Novo compromisso"), ações de status, preferências de comunicação por compromisso, histórico de alterações, confirmação automática via WhatsApp, **lembretes automáticos via cron** (ativo em produção via cron-job.org — 15min, HTTP 200 validado, dedup atômico PostgreSQL, retry em falha) — **38/38 testes Playwright passando em produção**
 
-Todas as migrations `024` a `038` aplicadas em produção.
+Todas as migrations `024` a `039` aplicadas em produção.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.
