@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAccountId } from '@/lib/ai/route-helpers'
 import { supabaseAdmin } from '@/lib/calendar/admin-client'
 import { getCalendarAdapter, getAccountCalendarSettings } from '@/lib/calendar'
 import { findExistingContact } from '@/lib/contacts/dedupe'
+import { dispatchAppointmentComm } from '@/lib/agenda/comm-dispatcher'
 import type { AppointmentWithContact, CommChannel } from '@/lib/agenda/types'
 
 /**
@@ -309,11 +310,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao salvar compromisso.' }, { status: 500 })
     }
 
+    // Dispatch WhatsApp confirmation after the response (non-blocking, same
+    // pattern as RAG document processing in Fase 7.1). If the account has no
+    // Evolution connection or the contact has no phone, the notifier exits
+    // silently — never breaks the appointment creation flow.
+    const dispatchId  = appt.id as string
+    const dispatchAcc = accountId
+    after(() => dispatchAppointmentComm({
+      appointmentId: dispatchId,
+      accountId:     dispatchAcc,
+      trigger:       'appointment_created',
+    }))
+
     return NextResponse.json({
-      success:           true,
-      appointment_id:    appt.id,
-      calendar_synced:   calendarSynced,
+      success:            true,
+      appointment_id:     appt.id,
+      calendar_synced:    calendarSynced,
       online_meeting_url: onlineMeetingUrl,
+      whatsapp_sent:      null, // resolved asynchronously via after()
     })
   } catch (err) {
     console.error('[agenda/appointments POST]', err)

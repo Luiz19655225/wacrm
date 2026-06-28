@@ -6,6 +6,10 @@ import { buildMediaPath } from '@/lib/storage/upload-media'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { buildLastMessagePreview } from './message-preview'
+import { detectAppointmentIntent } from '@/lib/agenda/intent-detector'
+import { logCommEvent, logStatusChange } from '@/lib/agenda/comm-service'
+import { STATUS_LABEL } from '@/lib/agenda/types'
+import type { AppointmentStatus } from '@/lib/agenda/types'
 
 // Handles the three Evolution webhook events needed for
 // "QR Code -> Conexão -> Conversas -> Inbox" (Fase 3 plan):
@@ -382,6 +386,96 @@ async function handleMessagesUpsert(
       context: { message_text: contentText ?? '', conversation_id: conversation.id },
     }).catch((err) => console.error('[evolution webhook] automations dispatch failed:', err))
   }
+
+  // Appointment intent detection (Fase 8.2) — non-blocking, runs after all
+  // normal message processing. Only fires when the conversation is linked to
+  // an active appointment and the message contains a recognizable intent.
+  // Never affects message storage, flow dispatch, or automations above.
+  if (contentType === 'text' && contentText) {
+    void handleAppointmentIntentReply(
+      connection.account_id,
+      conversation.id,
+      contentText,
+    ).catch(err => console.error('[evolution webhook] intent detection failed:', err))
+  }
+}
+
+// ─── Appointment intent processing ───────────────────────────────────────────
+
+/**
+ * Detects whether an inbound message is a response to an appointment
+ * confirmation request and, if so, updates the appointment status.
+ *
+ * Only fires when:
+ *   1. The conversation has a linked appointment (conversation_id match).
+ *   2. The appointment is still active (not terminal).
+ *   3. The appointment is recent/upcoming (within the last 72 h or future).
+ *   4. The message matches a known confirm / reschedule / cancel intent.
+ *
+ * To extend intent vocabulary (Fase 8.3+): edit intent-detector.ts.
+ * To replace with an LLM classifier: swap detectAppointmentIntent() here.
+ */
+async function handleAppointmentIntentReply(
+  accountId: string,
+  conversationId: string,
+  text: string,
+): Promise<void> {
+  const intent = detectAppointmentIntent(text)
+  if (intent === 'unknown') return
+
+  // Only consider appointments within the last 72 h or in the future
+  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()
+
+  const { data: appt } = await supabaseAdmin()
+    .from('calendar_appointments')
+    .select('id, account_id, status')
+    .eq('account_id', accountId)
+    .eq('conversation_id', conversationId)
+    .not('status', 'in', '("completed","cancelled","no_show")')
+    .gte('start_at', cutoff)
+    .order('start_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (!appt) return
+
+  const statusMap: Record<Exclude<typeof intent, 'unknown'>, AppointmentStatus> = {
+    confirm:    'confirmed',
+    reschedule: 'rescheduled',
+    cancel:     'cancelled',
+  }
+  const newStatus = statusMap[intent as Exclude<typeof intent, 'unknown'>]
+
+  const oldStatus = appt.status as AppointmentStatus
+  if (newStatus === oldStatus) return // already in desired state
+
+  const apptId = appt.id as string
+
+  const { error } = await supabaseAdmin()
+    .from('calendar_appointments')
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', apptId)
+    .eq('account_id', accountId)
+
+  if (error) {
+    console.error('[evolution webhook] intent status update failed:', error.message)
+    return
+  }
+
+  // Log the system status change + the client's WhatsApp reply separately
+  await Promise.all([
+    logStatusChange({ appointmentId: apptId, accountId, oldStatus, newStatus }),
+    logCommEvent({
+      appointmentId: apptId,
+      accountId,
+      eventType: intent === 'confirm' ? 'confirmation_received' : 'status_changed',
+      channel:   'whatsapp',
+      oldStatus,
+      newStatus,
+      message:   `Cliente respondeu via WhatsApp: ${STATUS_LABEL[newStatus]} (resposta: "${text.slice(0, 100)}")`,
+      metadata:  { reply: text, intent },
+    }),
+  ])
 }
 
 export interface EvolutionWebhookPayload {

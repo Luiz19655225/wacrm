@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAccountId } from '@/lib/ai/route-helpers'
 import { supabaseAdmin } from '@/lib/calendar/admin-client'
 import { logStatusChange } from '@/lib/agenda/comm-service'
+import { dispatchAppointmentComm } from '@/lib/agenda/comm-dispatcher'
 
 /**
  * PATCH /api/agenda/appointments/[id]
@@ -99,6 +100,24 @@ export async function PATCH(
         oldStatus,
         newStatus: body.status,
       })
+    }
+
+    // Dispatch WhatsApp notification for status changes the client cares about.
+    // Runs after the response so the UI never waits on WhatsApp delivery.
+    if (
+      body.status === 'cancelled' ||
+      body.status === 'rescheduled'
+    ) {
+      const dispatchId  = id
+      const dispatchAcc = accountId
+      const trigger     = body.status === 'cancelled'
+        ? 'appointment_cancelled' as const
+        : 'appointment_rescheduled' as const
+      after(() => dispatchAppointmentComm({
+        appointmentId: dispatchId,
+        accountId:     dispatchAcc,
+        trigger,
+      }))
     }
 
     return NextResponse.json({ success: true })
