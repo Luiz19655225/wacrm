@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { WavonLogoReduced } from "@/components/brand/wavon-logo";
 import {
+  Activity,
   CalendarDays,
   Crown,
   GitBranch,
@@ -94,6 +95,7 @@ const navItems: NavItem[] = [
   { href: "/contacts", label: "Contatos", icon: Users },
   { href: "/pipelines", label: "Negociações", icon: GitBranch },
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/observabilidade", label: "Observabilidade", icon: Activity },
   { href: "/broadcasts", label: "Disparos", icon: Radio },
   { href: "/automations", label: "Automações", icon: Zap },
   { href: "/flows", label: "Fluxos", icon: Workflow, beta: true },
