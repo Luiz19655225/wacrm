@@ -229,6 +229,18 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 - [x] `series/route.ts`: `from` derivado de `${dates[0]}T00:00:00.000Z` em vez de `now − days*24h` — elimina off-by-one que descartava ~24h de dados silenciosamente por chamada
 - [x] `dashboard-exec-page.tsx`: dois `useEffect` separados com `AbortController` próprio — elimina fetch duplo no mount, cancela requisições antigas ao trocar período (7/14/30d) rapidamente
 
+## Fase 8.6 — Analytics Inteligente
+✅ Concluída e em deploy (commit `d043699`, deploy `dpl_GMb2BuePapCez6KoxyRuzpVo3GQ1`)
+
+- [x] Nova rota `/analytics` na sidebar (ícone LineChart)
+- [x] Filtros globais: Hoje / Ontem / 7d / 30d / 90d / Personalizado
+- [x] 6 abas: Comercial, Agenda, Comunicação, Usuários, Clientes, IA
+- [x] 6 APIs independentes `/api/analytics/*` com dados reais do Supabase
+- [x] Recharts BarCharts + tabelas em todas as abas + exportação CSV por seção
+- [x] Lazy loading + AbortController via ref (sem stale responses)
+- [x] `src/lib/analytics/date-range.ts` — utilitário compartilhado de séries de datas
+- [x] Testes Playwright 52–58 adicionados
+
 ## Status geral (28/06/2026)
 Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas.
 
@@ -245,7 +257,8 @@ Funcionalidades ativas:
 - ✅ Lembretes automáticos via cron (24h, 2h, 30min — ativo em produção via cron-job.org)
 - ✅ Observabilidade e Monitoramento (/observabilidade — Agenda, Comunicação, Integrações)
 - ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
-- ✅ **51/51 testes Playwright passando em produção**
+- ✅ Analytics Inteligente (/analytics — 6 abas, filtros globais, exportação CSV)
+- ✅ **59 testes Playwright definidos (52 passando — 7 aguardam refresh de sessão)**
 
 ## Fase 8.4 — Observabilidade e Monitoramento
 ✅ Concluída e validada em produção (commit `7df3382`, deploy `dpl_7hyzC4bWeFwU8k5sp9aaQWtLACoM`)

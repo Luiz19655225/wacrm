@@ -628,6 +628,41 @@ Aplicadas antes de iniciar a Fase 8.6. 51/51 testes continuam passando.
 - `series/route.ts:31` — `from` agora derivado de `${dates[0]}T00:00:00.000Z` (início UTC da primeira data da série) em vez de `now − days*24h`: elimina off-by-one que descartava silenciosamente ~24h de dados por chamada de gráfico
 - `dashboard-exec-page.tsx:109` — dois `useEffect` separados, cada um com `AbortController` próprio: elimina fetch duplo em `series?days=7` no mount e garante cancelamento de requisições antigas ao trocar o período (7d/14d/30d) rapidamente
 
+## Fase 8.6 — Analytics Inteligente (28/06/2026) — ✅ CONCLUÍDA e em deploy
+
+Commit `d043699`, deploy `dpl_GMb2BuePapCez6KoxyRuzpVo3GQ1`. 59 testes Playwright definidos (52 passando — 7 aguardam refresh de sessão).
+
+### Arquivos criados/alterados na Fase 8.6
+- `src/lib/analytics/date-range.ts` — `buildDateRangeSeries()`, `parseRange()`, `groupByDate()`
+- `src/app/api/analytics/comercial/route.ts` — novos contatos + negociações abertas/valor + gráficos
+- `src/app/api/analytics/agenda/route.ts` — KPIs de compromissos (status, taxas, tempo p/ confirmar) + gráficos
+- `src/app/api/analytics/comunicacao/route.ts` — mensagens enviadas/recebidas + conversas + gráfico diário
+- `src/app/api/analytics/usuarios/route.ts` — ranking por usuário (appointments + deals + valor)
+- `src/app/api/analytics/clientes/route.ts` — totais de contatos + top por compromissos
+- `src/app/api/analytics/ia/route.ts` — ai_usage_logs por feature + tokens + Widget appointments
+- `src/app/(dashboard)/analytics/page.tsx` — page.tsx com metadata
+- `src/components/analytics/analytics-page.tsx` — orquestrador "use client" (filtros + lazy tabs)
+- `src/components/analytics/analytics-filters.tsx` — filtros globais (Hoje/Ontem/7d/30d/90d/Personalizado)
+- `src/components/analytics/chart-config.ts` — TICK_FILL, TOOLTIP_STYLE, CHART_COLORS, formatadores
+- `src/components/analytics/export-csv.ts` — exportCsv() client-side com BOM UTF-8
+- `src/components/analytics/tabs/comercial-tab.tsx`
+- `src/components/analytics/tabs/agenda-tab.tsx`
+- `src/components/analytics/tabs/comunicacao-tab.tsx`
+- `src/components/analytics/tabs/usuarios-tab.tsx`
+- `src/components/analytics/tabs/clientes-tab.tsx`
+- `src/components/analytics/tabs/ia-tab.tsx`
+- `src/components/layout/sidebar.tsx` — adicionado item Analytics (LineChart, entre Agenda e Observabilidade)
+- `tests/e2e/agenda-validation.spec.ts` — testes 52–58 (carga, filtros, abas, regressão)
+
+### Padrão fetch em tabs (importante para manutenção)
+Cada tab usa `useCallback(async ...)` + `void load(from, to)` no efeito — padrão idêntico ao `agenda-dashboard.tsx`. AbortController gerenciado via `useRef` (abortar a requisição anterior antes de cada nova). `setLoading(true)` fica dentro do `useCallback` para não violar a regra ESLint `react-hooks/set-state-in-effect`.
+
+### Dados mockados (marcados na UI)
+- Conversões, taxa de conversão, receita realizada → `deals.status` só tem 'open' confirmado (sem 'ganho')
+- Clientes inativos / em risco → requer histórico de interações acumulado
+- E-mail em Comunicação → canal não implementado
+- WAVI (atendente autônomo) em IA → módulo independente planejado para fases futuras
+
 ## Próxima fase planejada
 A definir.
 
