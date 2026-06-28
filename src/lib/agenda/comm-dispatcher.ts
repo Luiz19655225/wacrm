@@ -37,6 +37,9 @@ export interface ChannelResult {
 }
 
 export interface DispatchResult {
+  // true if at least one channel delivered successfully.
+  // Callers (e.g. cron) check only this field — never channel names.
+  sent: boolean
   whatsapp: ChannelResult
   // email: ChannelResult  // Fase futura
   // push:  ChannelResult  // Fase futura
@@ -92,6 +95,7 @@ export async function dispatchAppointmentComm(params: {
   } = params
 
   const result: DispatchResult = {
+    sent:     false,
     whatsapp: { attempted: false, sent: false },
   }
 
@@ -130,6 +134,11 @@ export async function dispatchAppointmentComm(params: {
 
   // const wantsPush = true // push could be independent of comm_channel
   // if (wantsPush) result.push = await sendPushAppointmentMessage(...)
+
+  // Aggregate: true if any channel delivered successfully.
+  // Update this line when adding new channels.
+  result.sent = result.whatsapp.sent
+  // || result.email?.sent || result.push?.sent  // Fase futura
 
   return result
 }

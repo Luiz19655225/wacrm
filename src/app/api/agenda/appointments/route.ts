@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         title, start_at, end_at, online_meeting_url,
         status, confirmed_at, reason, origin, assigned_user_id, notes,
         comm_confirmation_enabled, comm_reminder_enabled, comm_channel,
+        reminder_24h_sent_at, reminder_2h_sent_at, reminder_30min_sent_at,
         created_at, updated_at,
         contacts (
           name, phone, email, company
@@ -114,6 +115,9 @@ export async function GET(request: NextRequest) {
         comm_confirmation_enabled: (r.comm_confirmation_enabled as boolean | null) ?? true,
         comm_reminder_enabled:     (r.comm_reminder_enabled as boolean | null) ?? true,
         comm_channel:              ((r.comm_channel as string | null) ?? 'whatsapp') as CommChannel,
+        reminder_24h_sent_at:      (r.reminder_24h_sent_at as string | null) ?? null,
+        reminder_2h_sent_at:       (r.reminder_2h_sent_at as string | null) ?? null,
+        reminder_30min_sent_at:    (r.reminder_30min_sent_at as string | null) ?? null,
         created_at:        r.created_at as string,
         updated_at:        r.updated_at as string,
         contact:           contactRaw ?? null,
