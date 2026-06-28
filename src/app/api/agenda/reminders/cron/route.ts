@@ -40,13 +40,15 @@ type ReminderConfig = {
 }
 
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret) {
+  // Auth matches the existing /api/automations/cron pattern:
+  // caller sends x-cron-secret: <AUTOMATION_CRON_SECRET>
+  const expected = process.env.AUTOMATION_CRON_SECRET
+  if (!expected) {
     return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
   }
 
-  const authHeader = new Headers((request as { headers: Headers }).headers).get('authorization')
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const supplied = (request as { headers: { get(n: string): string | null } }).headers.get('x-cron-secret')
+  if (supplied !== expected) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
