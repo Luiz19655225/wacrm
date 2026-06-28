@@ -2,6 +2,49 @@
 
 # WAVON CRM — Estado do projeto
 
+## Política Oficial de Desenvolvimento (vigente desde 27/06/2026)
+
+### Sprints
+- Objetivo único por sprint, escopo limitado, sem alterar módulos não relacionados
+- Nunca iniciar duas fases simultaneamente
+- Encerrar totalmente validada antes de iniciar a próxima
+
+### Testes obrigatórios (nessa ordem, antes de qualquer commit)
+1. `npm run typecheck` — 0 erros TypeScript
+2. `npm run lint` — 0 erros (warnings pré-existentes tolerados)
+3. `npm run build` — build Next.js limpo
+4. `npm run validate:agenda` (ou script Playwright da feature) — todos os testes passando
+5. Validação no browser assistido — fluxo real em produção
+6. Validação em produção (`www.wavon.com.br`)
+
+**Somente após todos os itens acima:** commit → push → deploy
+
+### Browser assistido
+- Sempre usar para validar ao final de cada sprint
+- Reutilizar abas abertas: WAVON, Google Calendar, Supabase, Vercel, GitHub
+- Solicitar login apenas quando sessão realmente expirar
+
+### Qualidade do código — antes de concluir cada sprint
+- Remover código temporário, logs de diagnóstico (`// TEMP`, `// DIAG`), TODOs antigos
+- Manter tipagem consistente, evitar duplicação, reutilizar serviços e componentes existentes
+
+### Banco de dados
+- Toda alteração estrutural via migration versionada em `supabase/migrations/`
+- Nunca alterar tabelas manualmente em produção sem migration correspondente
+
+### Documentação — atualizar ao final de cada sprint
+- `CLAUDE.md`, `PROGRESSO.md`, `project_wavon.md` (memória), `MEMORY.md`
+
+### Encerramento de sessão — quando contexto atingir ~85-90%
+1. Encerrar a sessão atual
+2. Atualizar toda a documentação
+3. Gerar Resumo Executivo Completo (15 seções)
+4. Abrir nova conversa
+
+Nunca iniciar uma fase grande com contexto quase esgotado.
+
+---
+
 ## Localização e infraestrutura
 - Pasta: `C:\Users\Luiz\Wavon CRM`
 - Repo: `https://github.com/Luiz19655225/wacrm.git`, branch `main`
@@ -335,52 +378,114 @@ Alterados: `src/lib/calendar/types.ts` (+ExternalCalendarEvent, +listEvents), `s
 
 **Billing banner "Payment overdue"**: presente no ambiente Sandbox do Asaas — comportamento esperado (assinatura de sandbox com cobrança vencida). Não é bug de código. Sugestão de melhoria registrada para a Fase 8.1: ocultar quando `ASAAS_ENVIRONMENT=sandbox`.
 
-## Fase 8.1 — Refinamento da Agenda (próxima sessão — aguardando aprovação)
+## Fase 8.1.1 — Criação de compromissos (27/06/2026) — ✅ CONCLUÍDA
+Commits `994267b` + `a99ae0b`. Deploy `dpl_2b3kwtJsGTZVdrh6eQuF3rXmwE6j`.
 
-**NÃO iniciar sem aprovação explícita do usuário.**
+- **Botão "Novo compromisso"** na `AgendaHeader` (antes de "Sincronizar")
+- **`NewAppointmentDialog`**: busca de contato existente (debounce 300ms, client Supabase + RLS), modo "Criar novo contato", campos título/data/hora início/duração/motivo/notas/responsável
+- **`POST /api/agenda/appointments`**: resolve/cria contato no CRM (`findExistingContact` por telefone), tenta sync Google Calendar não-bloqueante, insere `calendar_appointments` com `origin='Manual'`
+- Testes Playwright 9–11 adicionados: botão visível, modal abre, formulário com campos obrigatórios — **11/11 passando em produção**
 
-Prioridades aprovadas no encerramento de 26/06/2026:
+## Fase 8.1.2 — Experiência da Agenda (27/06/2026) — ✅ CONCLUÍDA
+Commit `8f991b0`. Deploy `dpl_9deW1HCFfdq14DzV6TkPDcJKyWwY`. Fix B1 multi-calendário: commit `11c2faa`.
 
-1. Sincronização automática ao abrir `/agenda` (sem precisar clicar "Sincronizar")
-2. Ocultar banner "Payment overdue" quando ambiente Sandbox
-3. Painel lateral de compromissos mais completo
-4. Badge de origem do evento: Google / Outlook / Local
-5. Destacar dia atual e quantidade de eventos no calendário mensal
-6. UX geral do calendário (navegação, hover states)
-7. Filtros por usuário, origem e status
-8. Botão "Novo compromisso" na Agenda
-9. Criar compromisso diretamente no WAVON sincronizando automaticamente com Google Calendar
-10. Timezone dinâmico por conta (usando `calendar_settings.timezone`)
+- **Auto-sync** silencioso no mount: dispara uma vez ao abrir `/agenda` (useRef guarda contra loop/StrictMode)
+- **Badge de origem** nos cards: G (azul) para Google, O (índigo) para Outlook — sem badge para Manual/Local
+- **Contador de eventos** por dia: pill colorido no canto superior direito do número do dia
+- **Destaque do dia atual**: ring-1 inset + bg-primary/5 na célula; número em destaque
+- **Hover suave** nas células (`hover:bg-muted/15`)
+- **Painel lateral** melhorado: duração inline via `getDurationLabel()`, fallback "Sem contato vinculado", botão "Google Calendar" para eventos GOOGLE
+- `getDurationLabel()` e `ORIGIN_BADGE` adicionados a `src/lib/agenda/types.ts`
+- Fix B1: `getGoogleFreeBusy` passa `calendarIds[]` para buscar disponibilidade de todos os calendários
+- Testes Playwright 12–15 adicionados — **15/15 passando em produção**
+
+## Fase 8.1.3 — Organização da Agenda (27/06/2026) — ✅ CONCLUÍDA
+Commits `31003d9` + `23ac157`. Deploy `dpl_mgrpMoFhMsHDjoPxR22H51FeYJkv`.
+
+- **`AgendaFiltersBar`** (novo `src/components/agenda/agenda-filters.tsx`): 3 selects (Responsável, Origem, Status) + botão "Limpar" — renderiza entre header e calendário mensal
+- Filtros 100% client-side — sem chamada extra à API (appointments do mês já estão em memória)
+- Botão "Limpar" só aparece quando há filtro ativo (`data-testid="filter-reset"`)
+- **Timezone dinâmico**: `useEffect` no mount de `agenda-page.tsx` lê `/api/calendar/settings`, atualiza state; fallback `America/Sao_Paulo`
+- **`src/lib/agenda/stats.ts`**: `getAgendaStats()` — retorna totais `byStatus`, `byOrigin`, `byUser`; base para relatórios futuros
+- Fix strict-mode Playwright: `getByText('Ter', { exact: true })` no Teste 2 para evitar colisão com texto agregado de `<select>` options
+- Testes Playwright 16–22 adicionados — **22/22 passando em produção**
+
+## Fase 8.1.4 — Comunicação Inteligente da Agenda (27/06/2026) — ✅ CONCLUÍDA
+Commits `ff58e57` + `e9e8f46` + `703a96d`. Deploy `dpl_5nwhAq7yHdzrJ5rMGndQHE2SYSCZ`. Migration `038` aplicada.
+
+### Novos status
+`AppointmentStatus` expandido: `'scheduled' | 'confirmed' | 'rescheduled' | 'completed' | 'cancelled' | 'no_show'`
+- `confirmed` → Confirmado (verde) — disparado pelo botão "Confirmar presença" no painel; seta `confirmed_at`
+- `no_show` → Não compareceu (laranja) — fecha o painel ao ser selecionado
+- `TERMINAL_STATUSES = ['completed', 'cancelled', 'no_show']` — sem novas ações disponíveis
+
+### Migration 038 — `038_appointment_communication.sql`
+Puramente aditiva. Aplicada e validada em produção.
+- Expande CHECK de `status` para incluir `confirmed` e `no_show`
+- Adiciona colunas em `calendar_appointments`: `confirmed_at TIMESTAMPTZ`, `comm_confirmation_enabled BOOLEAN NOT NULL DEFAULT TRUE`, `comm_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE`, `comm_channel TEXT NOT NULL DEFAULT 'whatsapp'` (CHECK `whatsapp|email|both`)
+- Cria tabela `appointment_comm_log`: `appointment_id`, `account_id`, `event_type` (CHECK 6 valores), `channel`, `old_status`, `new_status`, `message`, `metadata JSONB`, `created_at`
+- Índices: `idx_comm_log_appointment(appointment_id, created_at DESC)`, `idx_comm_log_account(account_id, created_at DESC)`
+- RLS: `comm_log_select` — `is_account_member(account_id)` para SELECT; writes via `supabaseAdmin`
+- **Gotcha**: `CREATE POLICY IF NOT EXISTS` não existe no PostgreSQL — usar `DROP POLICY IF EXISTS` + `CREATE POLICY`
+- **Gotcha**: `ADD COLUMN IF NOT EXISTS` com `CHECK` inline em statement multi-coluna causa syntax error no Supabase — separar cada coluna em `ALTER TABLE` individual
+
+### Novos arquivos
+- `src/lib/agenda/comm-service.ts`: `logCommEvent()`, `logStatusChange()`, `getCommLog()` — arquitetura pronta para WhatsApp/email futuro; service role bypassa RLS nas writes
+- `src/app/api/agenda/appointments/[id]/comm-log/route.ts`: `GET` retornando `{ entries: CommLogEntry[] }` via `getCommLog(id, accountId)`
+
+### Arquivos modificados
+- `src/lib/agenda/types.ts`: `CommChannel`, `CommEventType`, `CommLogEntry`, `COMM_CHANNEL_LABEL`, `TERMINAL_STATUSES`, `relativeTime()`, `STATUS_COLOR`/`STATUS_LABEL`/`STATUS_DOT` com os 6 statuses
+- `src/lib/agenda/stats.ts`: `byStatus` inicializado com os 6 statuses
+- `src/components/agenda/agenda-filters.tsx`: `ALL_STATUSES` expandido para 6 valores
+- `src/app/api/agenda/appointments/route.ts`: SELECT inclui novos campos; mapping inclui `confirmed_at`, `comm_*` com defaults seguros
+- `src/app/api/agenda/appointments/[id]/route.ts`: ALLOWED_STATUSES com 6 valores, aceita `comm_*` no body, busca `old_status` antes de UPDATE, seta `confirmed_at`, `void logStatusChange()` não-bloqueante
+- `src/components/agenda/appointment-panel.tsx`: reescrito com ações rápidas (Confirmar, Não compareceu, Reagendar, Cancelar, Concluído), seção de preferências de comunicação (canal + checkboxes com PATCH otimista), seção de histórico (fetch do `/comm-log` no useEffect, escondido quando vazio)
+
+### Lógica de ações por status
+| Status | Confirmar | Não compareceu | Reagendar | Cancelar | Concluído |
+|--------|-----------|----------------|-----------|----------|-----------|
+| scheduled | ✅ | ✅ | ✅ | ✅ | ✅ |
+| confirmed | — | ✅ | ✅ | ✅ | ✅ |
+| rescheduled | ✅ | — | ✅ | ✅ | ✅ |
+| completed | — | — | — | — | — |
+| cancelled | — | — | — | — | — |
+| no_show | — | — | — | — | — |
+
+Testes Playwright 23–27 adicionados — **27/27 passando em produção**
 
 **Ação necessária antes de qualquer item acima**: commitar o Fix 2 do multi-calendário.
 
 ## Pendências abertas
-Nenhuma pendência de infraestrutura aberta no momento (DNS de webmail/cpanel confirmado funcionando em 22/06/2026 — ver seção de infraestrutura acima).
-
-Fases 2 a 8.0 concluídas e em produção — migrations `024` a `037` aplicadas.
-
-**Pendência de próxima sessão (antes de iniciar a Fase 8.1)**:
-- Commitar multi-calendário: remover logs DIAG de `src/lib/calendar/providers/google/adapter.ts`, then `git add` + commit + push + `npx vercel --prod`.
+Nenhuma pendência de infraestrutura aberta. Fases 2 a 8.1.4 concluídas e em produção — migrations `024` a `038` aplicadas.
 
 Pendências não-bloqueantes:
 - Adicionar `SUBSCRIPTION_INACTIVATED` + `SUBSCRIPTION_DELETED` ao webhook Asaas Sandbox (ação manual no painel Asaas).
 - Mensagens de grupo (`@g.us`) da Evolution criam um "contato" por grupo, não por remetente real — sem atribuição por pessoa dentro do grupo.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`). Configurável por quem criar um Azure App Registration (instruções na Fase 7.2).
+- Logs temporários de diagnóstico em `evolution-webhook-processor.ts` (`// TEMP DIAGNOSTIC LOG`) — remover quando operação estabilizar.
+- Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
 
-## Estado atual da plataforma (26/06/2026)
+## Regra permanente de navegação e autenticação (27/06/2026)
+Durante o desenvolvimento do WAVON, o browser assistido (mcp__claude-in-chrome__*) DEVE ser usado para validar funcionalidades em produção real ao final de cada fase. Regra:
+- **Sessão já autenticada**: continuar normalmente — navegar, clicar, validar, executar fluxos E2E
+- **Login necessário**: parar imediatamente e exibir "Luiz, preciso que você faça login nesta página. Vou aguardar." Aguardar confirmação antes de continuar.
+- **Páginas a reutilizar** (sem abrir novas sem necessidade): WAVON, Google Calendar, Supabase, Vercel, GitHub
+- **Nunca**: excluir dados reais, revogar credenciais, expor tokens, alterar permissões de produção sem aprovação
+
+## Estado atual da plataforma (27/06/2026)
 WAVON em produção (`www.wavon.com.br`) com:
 - CRM (Contatos, Pipeline/Negociações, Automações)
-- Inbox com WhatsApp via Evolution API (inbound e outbound validados, mídias inbound funcionando)
-- Respostas rápidas ("/atalho" no composer)
-- IA integrada via OpenAI (Responses API), chave própria por conta, criptografada
+- Inbox com WhatsApp via Evolution API (inbound + outbound + mídias validados)
+- Respostas rápidas ("/atalho" no composer do Inbox)
+- IA via OpenAI (Responses API), chave própria por conta criptografada (AES-256-GCM)
 - Assistente IA no Inbox: sugerir resposta, resumir conversa, classificar lead
-- Base de Conhecimento da IA: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
-- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica consultada antes de responder ao cliente (Inbox + widget) — serviço desacoplado (`src/lib/ai/rag/`)
-- Widget de atendimento IA no site público (coleta nome + WhatsApp + e-mail), conversas chegando ao Inbox normal
-- **Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1)**: IA sempre ativa para agendamento; coleta obrigatória de 5 campos com marcador semântico `[AGENDAR]` (slots nunca aparecem antes dos dados); Google Calendar com Google Meet; endpoint público `/api/public/site-widget/schedule`; dialog 2 etapas no Inbox; picker inline no Widget; atendente WAVI — tudo em produção
-- **Agenda nativa (Fase 8.0)**: `/agenda` com calendário mensal, sincronização Google Calendar (multi-calendário), painel lateral de compromissos, item na sidebar — validado em produção
+- Base de Conhecimento: Perfil da Empresa, Produtos, FAQ, Objetivos, Regras — carregada automaticamente em todo prompt
+- Documentos (RAG): upload de PDF/DOCX/PPTX/XLSX/TXT, busca semântica — serviço desacoplado (`src/lib/ai/rag/`)
+- Widget de atendimento IA no site público (atendente WAVI, coleta nome + WhatsApp + e-mail + motivo)
+- Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1): IA sempre ativa, marcador `[AGENDAR]`, Google Calendar + Meet, dialog 2 etapas no Inbox, picker inline no Widget
+- **Agenda nativa (Fases 8.0–8.1.4)**: calendário mensal, sincronização Google Calendar (multi-calendário), filtros (Responsável/Origem/Status), criação de compromissos ("Novo compromisso"), ações de status (Confirmar/Não compareceu/Reagendar/Cancelar/Concluído), preferências de comunicação por compromisso, histórico de alterações — **27/27 testes Playwright passando em produção**
 
-Todas as migrations até `037` aplicadas em produção.
+Todas as migrations `024` a `038` aplicadas em produção.
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

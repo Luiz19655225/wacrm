@@ -117,7 +117,7 @@ Pendências (ações manuais necessárias antes do deploy):
 - [x] migrations `036` aplicada em produção
 
 ## Fase 8.0 — Agenda WAVON nativa
-✅ Concluída e validada em produção (commits `708d485`, `91cc29e`)
+✅ Concluída e validada em produção (commits `708d485`, `91cc29e`, `11c2faa`)
 
 - [x] Migration `037_agenda_enhancements.sql` aplicada
 - [x] `/agenda` com calendário mensal
@@ -130,34 +130,71 @@ Pendências (ações manuais necessárias antes do deploy):
 - [x] Toast do botão "Sincronizar" com resultado real (eventos inseridos, atualizados, erros de auth)
 - [x] Validado com evento de teste "Teste WAVON" (27/06/2026 10:00) — apareceu corretamente na Agenda
 
-Pendência de próxima sessão (antes da Fase 8.1):
-- [ ] Commitar multi-calendário: remover logs DIAG de `adapter.ts`, then `git add src/lib/calendar/providers/google/client.ts src/lib/calendar/providers/google/adapter.ts && git commit`
-- [ ] Push + deploy após o commit
+## Fase 8.1.1 — Criação de compromissos
+✅ Concluída e validada em produção (commits `994267b`, `a99ae0b`)
 
-Pendências não-bloqueantes:
-- Banner "Payment overdue" no Sandbox Asaas — comportamento esperado (assinatura de sandbox vencida, não é bug de código)
-- Outlook Calendar: implementado mas sem credenciais Azure
+- [x] Botão "Novo compromisso" na `AgendaHeader`
+- [x] `NewAppointmentDialog`: busca de contato existente (debounce 300ms + RLS), modo "Criar novo contato"
+- [x] Campos: título, data, hora início, duração, motivo, notas, responsável
+- [x] `POST /api/agenda/appointments`: resolve/cria contato no CRM (dedup por telefone), sync Google Calendar não-bloqueante, insere `calendar_appointments` com `origin='Manual'`
+- [x] Testes Playwright 9–11 adicionados — **11/11 passando em produção**
 
-## Fase 8.1 — Refinamento da Agenda (próxima sessão — aguardando aprovação)
+## Fase 8.1.2 — Experiência da Agenda
+✅ Concluída e validada em produção (commit `8f991b0`)
 
-**NÃO iniciar sem aprovação explícita do usuário.**
+- [x] Auto-sync silencioso no mount (useRef contra loop/StrictMode)
+- [x] Badge de origem nos cards: G (azul) para Google, O (índigo) para Outlook
+- [x] Contador de eventos por dia: pill no canto do número
+- [x] Destaque do dia atual: ring-1 inset + bg-primary/5
+- [x] Hover suave nas células (`hover:bg-muted/15`)
+- [x] Painel lateral: duração inline (30 min / 1h / 1h 30min), fallback "Sem contato vinculado", botão "Google Calendar" para eventos GOOGLE
+- [x] `getDurationLabel()` e `ORIGIN_BADGE` adicionados a `types.ts`
+- [x] Testes Playwright 12–15 adicionados — **15/15 passando em produção**
 
-Prioridades aprovadas no encerramento de 26/06/2026:
+## Fase 8.1.3 — Organização da Agenda
+✅ Concluída e validada em produção (commits `31003d9`, `23ac157`)
 
-1. Sincronização automática ao abrir `/agenda` (sem precisar clicar "Sincronizar")
-2. Ocultar banner "Payment overdue" quando ambiente Sandbox
-3. Painel lateral de compromissos mais completo
-4. Badge de origem do evento: Google / Outlook / Local
-5. Destacar dia atual e quantidade de eventos no calendário mensal
-6. UX geral do calendário (navegação, hover states)
-7. Filtros por usuário, origem e status
-8. Botão "Novo compromisso" na Agenda
-9. Criar compromisso diretamente no WAVON, sincronizando automaticamente com Google Calendar
-10. Timezone dinâmico por conta (usando `calendar_settings.timezone`)
+- [x] `AgendaFiltersBar`: 3 selects (Responsável, Origem, Status) + botão "Limpar"
+- [x] Filtros client-side (sem chamada extra à API)
+- [x] Botão "Limpar" só aparece quando há filtro ativo (`data-testid="filter-reset"`)
+- [x] Timezone dinâmico: `useEffect` lê `/api/calendar/settings` no mount, fallback `America/Sao_Paulo`
+- [x] `src/lib/agenda/stats.ts`: `getAgendaStats()` — base para relatórios futuros
+- [x] Fix: `getByText('Ter', { exact: true })` para evitar colisão com text de select options
+- [x] Testes Playwright 16–22 adicionados — **22/22 passando em produção**
 
-## Status geral
-Plataforma operacional em produção (`www.wavon.com.br`): CRM, Inbox, Pipeline, Contatos, Negociações, Automações, Respostas Rápidas, WhatsApp via Evolution, IA via OpenAI com Base de Conhecimento própria por conta + Documentos (RAG) + Widget IA no site + **Agenda nativa com Google Calendar**. Todas as migrations até `037` aplicadas em produção.
+## Fase 8.1.4 — Comunicação Inteligente da Agenda
+✅ Concluída e validada em produção (commits `ff58e57`, `e9e8f46`, `703a96d`) — deploy `dpl_5nwhAq7yHdzrJ5rMGndQHE2SYSCZ`
+
+- [x] Migration `038_appointment_communication.sql` aplicada em produção
+- [x] Novos status: `confirmed` (Confirmado) e `no_show` (Não compareceu) — com cores e labels próprias
+- [x] Tabela `appointment_comm_log`: histórico de comunicação por compromisso
+- [x] Colunas novas em `calendar_appointments`: `confirmed_at`, `comm_confirmation_enabled`, `comm_reminder_enabled`, `comm_channel`
+- [x] `src/lib/agenda/comm-service.ts`: `logCommEvent()`, `logStatusChange()`, `getCommLog()` — arquitetura pronta para WhatsApp/email futuro
+- [x] `GET /api/agenda/appointments` retorna novos campos de comunicação
+- [x] `PATCH /api/agenda/appointments/[id]`: aceita campos de comunicação, seta `confirmed_at`, logging não-bloqueante via `void logStatusChange()`
+- [x] `GET /api/agenda/appointments/[id]/comm-log`: endpoint de histórico
+- [x] `appointment-panel.tsx` reescrito: Confirmar, Não compareceu, Reagendar, Cancelar, Concluído + seção de preferências + seção de histórico
+- [x] Testes Playwright 23–27 adicionados — **27/27 passando em produção**
+
+Gotchas registrados (ver `feedback_serverless_webhooks.md`):
+- `CREATE POLICY IF NOT EXISTS` não existe no PostgreSQL — usar `DROP POLICY IF EXISTS` + `CREATE POLICY`
+- `ADD COLUMN IF NOT EXISTS` com `CHECK` inline em statement multi-coluna causa syntax error no Supabase — separar cada coluna em `ALTER TABLE` individual
+
+## Status geral (27/06/2026)
+Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `038` aplicadas.
+
+Funcionalidades ativas:
+- CRM (Contatos, Pipeline/Negociações, Automações)
+- Inbox com WhatsApp via Evolution API (inbound + outbound + mídias)
+- Respostas rápidas ("/atalho" no composer)
+- IA via OpenAI (Responses API, chave própria por conta, criptografada)
+- Assistente IA no Inbox: sugerir resposta, resumir, classificar lead
+- Base de Conhecimento: Perfil, Produtos, FAQ, Objetivos, Regras, Documentos (RAG)
+- Widget IA no site público (atendente WAVI + agendamento inteligente)
+- Agenda nativa: calendário mensal, sincronização Google Calendar, filtros, criação de compromissos, ações de status, comunicação inteligente
+- **27/27 testes Playwright passando em produção**
 
 ## Próximo a planejar
-- Fase 8.1 (refinamento da Agenda) — aguardando aprovação explícita.
-- Enforcement real de billing por `access_status` (bloquear CRM/automações) — fase própria, não iniciar sem aprovação explícita.
+- Fase 8.2 (a definir) — aguardando aprovação explícita.
+- Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
+- Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`).
