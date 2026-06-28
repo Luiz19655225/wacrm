@@ -9,6 +9,7 @@ import { useTotalUnread } from "@/hooks/use-total-unread";
 import { WavonLogoReduced } from "@/components/brand/wavon-logo";
 import {
   Activity,
+  BarChart2,
   CalendarDays,
   Crown,
   GitBranch,
@@ -91,6 +92,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard-executivo", label: "Exec. Dashboard", icon: BarChart2 },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/contacts", label: "Contatos", icon: Users },
   { href: "/pipelines", label: "Negociações", icon: GitBranch },
