@@ -19,7 +19,9 @@ const SELECT_CLASS =
   "h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground " +
   "focus:outline-none focus:ring-1 focus:ring-ring"
 
-const ALL_STATUSES: AppointmentStatus[] = ['scheduled', 'rescheduled', 'completed', 'cancelled']
+const ALL_STATUSES: AppointmentStatus[] = [
+  'scheduled', 'confirmed', 'rescheduled', 'completed', 'cancelled', 'no_show',
+]
 
 export function AgendaFiltersBar({ appointments, filters, onChange }: AgendaFiltersBarProps) {
   // Derive options from the currently loaded month — no extra API call needed

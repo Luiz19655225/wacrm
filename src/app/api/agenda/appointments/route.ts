@@ -4,7 +4,7 @@ import { resolveAccountId } from '@/lib/ai/route-helpers'
 import { supabaseAdmin } from '@/lib/calendar/admin-client'
 import { getCalendarAdapter, getAccountCalendarSettings } from '@/lib/calendar'
 import { findExistingContact } from '@/lib/contacts/dedupe'
-import type { AppointmentWithContact } from '@/lib/agenda/types'
+import type { AppointmentWithContact, CommChannel } from '@/lib/agenda/types'
 
 /**
  * GET /api/agenda/appointments?from=ISO&to=ISO&status=scheduled,completed&origin=Google
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
         id, account_id, conversation_id, contact_id,
         provider_type, external_event_id,
         title, start_at, end_at, online_meeting_url,
-        status, reason, origin, assigned_user_id, notes,
+        status, confirmed_at, reason, origin, assigned_user_id, notes,
+        comm_confirmation_enabled, comm_reminder_enabled, comm_channel,
         created_at, updated_at,
         contacts (
           name, phone, email, company
@@ -104,10 +105,14 @@ export async function GET(request: NextRequest) {
         end_at:            r.end_at as string,
         online_meeting_url: r.online_meeting_url as string | null,
         status:            r.status as AppointmentWithContact['status'],
+        confirmed_at:      r.confirmed_at as string | null,
         reason:            r.reason as string | null,
         origin:            r.origin as AppointmentWithContact['origin'],
         assigned_user_id:  r.assigned_user_id as string | null,
         notes:             r.notes as string | null,
+        comm_confirmation_enabled: (r.comm_confirmation_enabled as boolean | null) ?? true,
+        comm_reminder_enabled:     (r.comm_reminder_enabled as boolean | null) ?? true,
+        comm_channel:              ((r.comm_channel as string | null) ?? 'whatsapp') as CommChannel,
         created_at:        r.created_at as string,
         updated_at:        r.updated_at as string,
         contact:           contactRaw ?? null,

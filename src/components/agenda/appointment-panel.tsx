@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   Sheet,
@@ -13,26 +13,32 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   CalendarDays,
+  CheckCircle2,
   Clock,
   ExternalLink,
+  History,
   Mail,
   MessageSquare,
   Phone,
   RefreshCw,
   User,
+  UserX,
   Video,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
+  COMM_CHANNEL_LABEL,
   STATUS_COLOR,
   STATUS_LABEL,
+  TERMINAL_STATUSES,
   ORIGIN_LABEL,
   getDurationLabel,
+  relativeTime,
   toLocalLabel,
   toLocalTime,
 } from "@/lib/agenda/types"
-import type { AppointmentWithContact } from "@/lib/agenda/types"
+import type { AppointmentWithContact, CommChannel, CommLogEntry } from "@/lib/agenda/types"
 
 interface AppointmentPanelProps {
   appointment: AppointmentWithContact | null
@@ -49,8 +55,35 @@ export function AppointmentPanel({
 }: AppointmentPanelProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [commLog, setCommLog] = useState<CommLogEntry[]>([])
+
+  // Communication preferences — local optimistic state
+  const [commPrefs, setCommPrefs] = useState({
+    comm_channel:               'whatsapp' as CommChannel,
+    comm_confirmation_enabled:  true,
+    comm_reminder_enabled:      true,
+  })
 
   const appt = appointment
+
+  // Load comm log and sync prefs when appointment changes
+  useEffect(() => {
+    if (!appt) {
+      setCommLog([])
+      return
+    }
+
+    setCommPrefs({
+      comm_channel:               appt.comm_channel,
+      comm_confirmation_enabled:  appt.comm_confirmation_enabled,
+      comm_reminder_enabled:      appt.comm_reminder_enabled,
+    })
+
+    fetch(`/api/agenda/appointments/${appt.id}/comm-log`)
+      .then(r => (r.ok ? r.json() : { entries: [] }))
+      .then((data: { entries: CommLogEntry[] }) => setCommLog(data.entries))
+      .catch(() => setCommLog([]))
+  }, [appt?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleStatusChange(newStatus: string) {
     if (!appt) return
@@ -63,12 +96,33 @@ export function AppointmentPanel({
       })
       if (res.ok) {
         onStatusChange(appt.id, newStatus)
-        if (newStatus === "cancelled") onClose()
+        // Re-fetch log after status change
+        const logRes = await fetch(`/api/agenda/appointments/${appt.id}/comm-log`)
+        if (logRes.ok) {
+          const logData = await logRes.json() as { entries: CommLogEntry[] }
+          setCommLog(logData.entries)
+        }
+        if (newStatus === "cancelled" || newStatus === "no_show") onClose()
       }
     } finally {
       setLoading(false)
     }
   }
+
+  async function handlePrefChange(update: Partial<typeof commPrefs>) {
+    if (!appt) return
+    setCommPrefs(prev => ({ ...prev, ...update }))  // optimistic
+    await fetch(`/api/agenda/appointments/${appt.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    }).catch(() => { /* silent — pref update failure is non-critical */ })
+  }
+
+  const isTerminal = appt ? TERMINAL_STATUSES.includes(appt.status) : false
+  const canConfirm = appt?.status === "scheduled" || appt?.status === "rescheduled"
+  const canNoShow  = appt?.status === "scheduled" || appt?.status === "confirmed"
+  const canComplete = appt?.status === "scheduled" || appt?.status === "confirmed" || appt?.status === "rescheduled"
 
   return (
     <Sheet open={!!appt} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -205,6 +259,72 @@ export function AppointmentPanel({
                   </div>
                 </section>
               )}
+
+              {/* Communication preferences */}
+              <section data-testid="comm-prefs">
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Comunicação
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {/* Channel preference */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Canal</span>
+                    <select
+                      value={commPrefs.comm_channel}
+                      onChange={e => void handlePrefChange({ comm_channel: e.target.value as CommChannel })}
+                      className="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      {(Object.entries(COMM_CHANNEL_LABEL) as [CommChannel, string][]).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Confirmation toggle */}
+                  <label className="flex cursor-pointer items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Enviar confirmação</span>
+                    <input
+                      type="checkbox"
+                      checked={commPrefs.comm_confirmation_enabled}
+                      onChange={e => void handlePrefChange({ comm_confirmation_enabled: e.target.checked })}
+                      className="size-4 rounded accent-primary"
+                    />
+                  </label>
+                  {/* Reminder toggle */}
+                  <label className="flex cursor-pointer items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Enviar lembrete</span>
+                    <input
+                      type="checkbox"
+                      checked={commPrefs.comm_reminder_enabled}
+                      onChange={e => void handlePrefChange({ comm_reminder_enabled: e.target.checked })}
+                      className="size-4 rounded accent-primary"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {/* Communication history */}
+              {commLog.length > 0 && (
+                <section data-testid="comm-log">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <History className="size-3.5" />
+                    Histórico
+                  </h3>
+                  <ol className="flex flex-col gap-2">
+                    {commLog.map(entry => (
+                      <li
+                        key={entry.id}
+                        className="flex items-start gap-2 text-xs"
+                      >
+                        <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                        <span className="flex-1 text-foreground">{entry.message}</span>
+                        <span className="shrink-0 text-muted-foreground">
+                          {relativeTime(entry.created_at)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
             </div>
 
             <SheetFooter className="border-t border-border p-4 flex flex-col gap-2">
@@ -246,9 +366,36 @@ export function AppointmentPanel({
                 )}
               </div>
 
-              {/* Status actions */}
-              {appt.status !== "completed" && appt.status !== "cancelled" && (
-                <div className="flex gap-2">
+              {/* Quick confirm — scheduled or rescheduled */}
+              {canConfirm && (
+                <Button
+                  size="sm"
+                  disabled={loading}
+                  data-testid="confirm-btn"
+                  className="gap-1.5 bg-green-600 text-white hover:bg-green-700"
+                  onClick={() => handleStatusChange("confirmed")}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Confirmar presença
+                </Button>
+              )}
+
+              {/* Secondary actions */}
+              {!isTerminal && (
+                <div className="flex flex-wrap gap-2">
+                  {canNoShow && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={loading}
+                      data-testid="noshow-btn"
+                      className="flex-1"
+                      onClick={() => handleStatusChange("no_show")}
+                    >
+                      <UserX className="size-3.5" />
+                      Não compareceu
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -271,9 +418,12 @@ export function AppointmentPanel({
                   </Button>
                 </div>
               )}
-              {appt.status === "scheduled" && (
+
+              {/* Complete action */}
+              {canComplete && (
                 <Button
                   size="sm"
+                  variant="outline"
                   disabled={loading}
                   onClick={() => handleStatusChange("completed")}
                 >

@@ -9,7 +9,7 @@ export interface AgendaStats {
 
 export function getAgendaStats(appointments: AppointmentWithContact[]): AgendaStats {
   const byStatus: Record<AppointmentStatus, number> = {
-    scheduled: 0, completed: 0, cancelled: 0, rescheduled: 0,
+    scheduled: 0, confirmed: 0, rescheduled: 0, completed: 0, cancelled: 0, no_show: 0,
   }
   const byOrigin: Partial<Record<AppointmentOrigin, number>> = {}
   const byUser: Record<string, { name: string | null; count: number }> = {}
