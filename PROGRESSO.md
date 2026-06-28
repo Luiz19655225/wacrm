@@ -239,7 +239,7 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 - [x] Recharts BarCharts + tabelas em todas as abas + exportação CSV por seção
 - [x] Lazy loading + AbortController via ref (sem stale responses)
 - [x] `src/lib/analytics/date-range.ts` — utilitário compartilhado de séries de datas
-- [x] Testes Playwright 52–58 adicionados
+- [x] Testes Playwright 52–58 adicionados — **58/58 passando em produção**
 
 ## Status geral (28/06/2026)
 Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas.
@@ -258,19 +258,7 @@ Funcionalidades ativas:
 - ✅ Observabilidade e Monitoramento (/observabilidade — Agenda, Comunicação, Integrações)
 - ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
 - ✅ Analytics Inteligente (/analytics — 6 abas, filtros globais, exportação CSV)
-- ✅ **59 testes Playwright definidos (52 passando — 7 aguardam refresh de sessão)**
-
-## Fase 8.4 — Observabilidade e Monitoramento
-✅ Concluída e validada em produção (commit `7df3382`, deploy `dpl_7hyzC4bWeFwU8k5sp9aaQWtLACoM`)
-
-- [x] Nova rota `/observabilidade` na sidebar (ícone Activity, entre Agenda e Disparos)
-- [x] Tab **Agenda**: KPIs por período (hoje/semana/mês) — total, por status, lembretes enviados (24h/2h/30min), por origem, produtividade por responsável, próximos compromissos nas próximas 24h
-- [x] Tab **Comunicação**: log de eventos por tipo, total enviado, erros, taxa de erro, registro recente dos últimos 7/14/30 dias
-- [x] Tab **Integrações**: status Google Calendar (conectado, timezone), Evolution API (status, instância), Cron (configurado, lembretes/24h)
-- [x] 3 APIs novas: `/api/observabilidade/{agenda,comunicacao,integrations}`
-- [x] Testes 39–44 adicionados — **44/44 passando em produção**
-
-Dados reais confirmados nos testes: GCal conectado, Evolution connected, Cron ativo.
+- ✅ **58/58 testes Playwright passando em produção**
 
 ## Próxima fase
 

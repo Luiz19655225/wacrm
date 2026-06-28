@@ -628,9 +628,9 @@ Aplicadas antes de iniciar a Fase 8.6. 51/51 testes continuam passando.
 - `series/route.ts:31` — `from` agora derivado de `${dates[0]}T00:00:00.000Z` (início UTC da primeira data da série) em vez de `now − days*24h`: elimina off-by-one que descartava silenciosamente ~24h de dados por chamada de gráfico
 - `dashboard-exec-page.tsx:109` — dois `useEffect` separados, cada um com `AbortController` próprio: elimina fetch duplo em `series?days=7` no mount e garante cancelamento de requisições antigas ao trocar o período (7d/14d/30d) rapidamente
 
-## Fase 8.6 — Analytics Inteligente (28/06/2026) — ✅ CONCLUÍDA e em deploy
+## Fase 8.6 — Analytics Inteligente (28/06/2026) — ✅ CONCLUÍDA e validada em produção
 
-Commit `d043699`, deploy `dpl_GMb2BuePapCez6KoxyRuzpVo3GQ1`. 59 testes Playwright definidos (52 passando — 7 aguardam refresh de sessão).
+Commit `d043699`, deploy `dpl_GMb2BuePapCez6KoxyRuzpVo3GQ1`. **58/58 testes Playwright passando em produção.**
 
 ### Arquivos criados/alterados na Fase 8.6
 - `src/lib/analytics/date-range.ts` — `buildDateRangeSeries()`, `parseRange()`, `groupByDate()`
