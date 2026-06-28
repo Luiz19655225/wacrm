@@ -23,13 +23,15 @@ export async function GET(request: NextRequest) {
         .eq('account_id', accountId)
         .gte('start_at', fromIso)
         .lte('start_at', toIso)
-        .not('assigned_user_id', 'is', null),
+        .not('assigned_user_id', 'is', null)
+        .limit(10000),
       supabase
         .from('deals')
         .select('user_id, value')
         .gte('created_at', fromIso)
         .lte('created_at', toIso)
-        .not('user_id', 'is', null),
+        .not('user_id', 'is', null)
+        .limit(10000),
     ])
 
     const apts = aptsResult.data ?? []

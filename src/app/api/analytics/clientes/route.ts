@@ -16,10 +16,10 @@ export async function GET(request: NextRequest) {
     const { fromIso, toIso } = parseRange(new URL(request.url).searchParams)
 
     const [allContactsResult, newContactsResult, dealsResult, aptsResult] = await Promise.all([
-      supabase.from('contacts').select('id', { count: 'exact', head: true }),
+      supabase.from('contacts').select('*', { count: 'exact', head: true }),
       supabase
         .from('contacts')
-        .select('id')
+        .select('*', { count: 'exact', head: true })
         .gte('created_at', fromIso)
         .lte('created_at', toIso),
       supabase
@@ -27,14 +27,16 @@ export async function GET(request: NextRequest) {
         .select('contact_id, value')
         .gte('created_at', fromIso)
         .lte('created_at', toIso)
-        .not('contact_id', 'is', null),
+        .not('contact_id', 'is', null)
+        .limit(10000),
       supabaseAdmin()
         .from('calendar_appointments')
         .select('contact_id, start_at, status')
         .eq('account_id', accountId)
         .gte('start_at', fromIso)
         .lte('start_at', toIso)
-        .not('contact_id', 'is', null),
+        .not('contact_id', 'is', null)
+        .limit(10000),
     ])
 
     const deals = dealsResult.data ?? []
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       kpis: {
         totalContacts: allContactsResult.count ?? 0,
-        newInPeriod: (newContactsResult.data ?? []).length,
+        newInPeriod: newContactsResult.count ?? 0,
         withAppointments: new Set(apts.map(a => a.contact_id)).size,
         withDeals: contactsWithDeals.size,
       },

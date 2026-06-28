@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       .eq('account_id', accountId)
       .gte('start_at', fromIso)
       .lte('start_at', toIso)
+      .limit(10000)
 
     const rows = apts ?? []
     const byStatus: Record<string, number> = {}

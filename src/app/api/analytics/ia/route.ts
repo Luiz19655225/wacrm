@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
         .select('feature, tokens_input, tokens_output, created_at, status')
         .eq('account_id', accountId)
         .gte('created_at', fromIso)
-        .lte('created_at', toIso),
+        .lte('created_at', toIso)
+        .limit(10000),
       admin
         .from('calendar_appointments')
         .select('id', { count: 'exact', head: true })

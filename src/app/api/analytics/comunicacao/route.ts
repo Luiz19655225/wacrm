@@ -20,10 +20,11 @@ export async function GET(request: NextRequest) {
         .from('messages')
         .select('created_at, sender_type')
         .gte('created_at', fromIso)
-        .lte('created_at', toIso),
+        .lte('created_at', toIso)
+        .limit(10000),
       supabase
         .from('conversations')
-        .select('id, created_at')
+        .select('*', { count: 'exact', head: true })
         .gte('created_at', fromIso)
         .lte('created_at', toIso),
     ])
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
         sent,
         received,
         total: msgs.length,
-        conversations: (convResult.data ?? []).length,
+        conversations: convResult.count ?? 0,
       },
       charts: {
         messagesByDay: dates.map(d => ({ date: d, ...dayMap[d] })),

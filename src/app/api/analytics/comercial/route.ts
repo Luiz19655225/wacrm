@@ -20,12 +20,14 @@ export async function GET(request: NextRequest) {
         .from('contacts')
         .select('id, created_at')
         .gte('created_at', fromIso)
-        .lte('created_at', toIso),
+        .lte('created_at', toIso)
+        .limit(10000),
       supabase
         .from('deals')
         .select('id, stage_id, value, user_id, created_at')
         .gte('created_at', fromIso)
-        .lte('created_at', toIso),
+        .lte('created_at', toIso)
+        .limit(10000),
       supabase
         .from('pipeline_stages')
         .select('id, name, position')
