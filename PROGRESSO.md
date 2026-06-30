@@ -337,6 +337,36 @@ Pendências obrigatórias (ações manuais na Meta):
 - [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros, 17 warnings pré-existentes), `npm run build` (limpo), 65/65 testes Playwright
 - [x] Validado em produção: título, status strip (Evolution: Desconectado | API Oficial: Não configurada | Meta Coexistência: Não configurada), 3 abas, form e instruções corretos na aba ativa
 
+## Fase 9.1.4 — Ajustes finais de UX da Central de Conexões WhatsApp (30/06/2026)
+✅ Concluída e validada em produção (commit `7418bbe`) — deploy `dpl_GpHfBHXz5mz7ychvyuzNvMD5oZHy`
+
+- [x] **Status Geral** — upgrade de `StatusDot` (ponto inline) para `StatusCard` (cards com borda colorida semântica: verde/vermelho/âmbar/cinza), com label uppercase + status em destaque
+- [x] **Campo WABA ID** — `onChange` aceita **só dígitos** (strip de não-numéricos em tempo real); detecta e-mail pré-existente carregado do banco (`wabaId.includes('@')`); exibe **alerta vermelho** + **borda vermelha** no campo + **bloqueia botão Salvar** até correção; placeholder "Ex: 123456789012345"; help text "ID numérico da sua WABA. Não é e-mail."
+- [x] **Webhook — status visual** — badge no header do card: `Verificado` (verde, quando `isRegistered && connected`) | `Não verificado` (âmbar, quando config salva mas não registrada) | `Pendente` (cinza, quando sem config) — derivado de estado existente, sem nova API
+- [x] **Aba QR Code / Evolution** — label amigável "Conexão Evolution" (em vez de raw `QR_CODE`); provider humanizado "Evolution API" (em vez de `EVOLUTION`); badge de status colorido por estado: verde=conectado, vermelho=desconectado/error, azul=qrcode_ready, cinza=pendente
+- [x] **Aba Meta Coexistência** — texto explicativo no topo da aba; alerta âmbar quando `NEXT_PUBLIC_META_APP_ID`/`NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` ausentes (instrução clara para adicionar no Vercel); botão "Conectar via Meta" desabilitado com `opacity: 0.5` quando env vars faltam; dl enriquecido com campo Status colorido (verde/âmbar) quando conectado
+- [x] Nenhuma alteração de banco, APIs, providers, webhooks, lógica de conexão ou handlers
+- [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros, 17 warnings pré-existentes), `npm run build` (limpo), 65/65 testes Playwright
+- [x] Validado em produção: status cards coloridos, badge webhook "Pendente", aba QR Code com "Conexão Evolution"/"Evolution API", aba Meta com alerta âmbar + botão desabilitado
+
+## Fase 9.1.5 — Correção da Gestão de Conexões Evolution / QR Code (30/06/2026)
+✅ Concluída e validada em produção (commits `a49a8dc` + `435f88c` + `55f9feb`) — deploy `dpl_8frnGMqUWRxCA8qeP9fMij4akTuq`
+
+- [x] **Dedup QR_CODE no POST**: `route.ts` agora busca TODAS as linhas (qualquer status) em vez de só `pending` — retorna a mais recente e deleta duplicatas silenciosamente. Sem impacto em META_API/META_EMBEDDED.
+- [x] **Cleanup de duplicatas no `/connect`**: antes de provisionar, deleta todas as outras linhas `QR_CODE` do mesmo account_id — clicar "Tentar novamente" em qualquer card converge para 1 linha.
+- [x] **`evolution-adapter.ts`**: `connect()` tenta `deleteInstance(account_id)` antes de `createInstance()` — elimina erro 409 "instance already exists" ao reconectar. Erro 404 (primeiro setup) capturado e ignorado.
+- [x] **Erro real visível**: `/connect/route.ts` inclui `details: err.message` na resposta de erro — expõe status HTTP + body da Evolution (ex: `403 {"status":403,"error":"Forbidden",...}`)
+- [x] **`channel-connections-panel.tsx`**:
+  - `last_error` truncado (80 chars) exibido sob o badge quando `status='error'`
+  - Botão contextual: "Tentar novamente" (error) | "Reconectar" (disconnected) | "Gerar QR" (outros)
+  - "Adicionar conexão QR Code" oculto quando já existe qualquer linha QR_CODE (enforcement 1:1 client-side)
+  - `fetchConnections()` chamado antes do early return no erro (UI reflete banco após cleanup)
+  - Toast com `details` real da Evolution
+- [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros), `npm run build` (limpo), 65/65 testes Playwright
+- [x] Validado em produção: 1 única "Conexão Evolution", botão "Tentar novamente", erro 403 Forbidden visível, botão "Adicionar" oculto
+
+**Nota pós-validação**: erro 403 é problema de credenciais na Evolution API do usuário (API Key inválida/expirada ou plano não permite criar instâncias) — não é bug de código.
+
 ## Status geral (30/06/2026)
 Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `041` aplicadas.
 

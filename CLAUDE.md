@@ -828,6 +828,74 @@ Reorganização UX-only de Configurações → WhatsApp: 3 abas horizontais + st
 - `src/components/settings/whatsapp-config.tsx` — título, status strip, `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent`, validação e-mail no WABA ID, placeholders melhorados; lógica e handlers preservados 100%
 - `src/components/settings/channel-connections-panel.tsx` — prop `filterTypes?: string[]` (filtra display client-side); título/descrição contextuais; exibe `phone_number` e `updated_at`; botão "Reconectar" para status `disconnected`; estado vazio com orientação
 
+## Fase 9.1.4 — Ajustes finais de UX da Central de Conexões WhatsApp (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commit `7418bbe`. Deploy `dpl_GpHfBHXz5mz7ychvyuzNvMD5oZHy`. **65/65 testes Playwright mantidos.**
+
+Ajustes visuais e de validação na Central de Conexões WhatsApp. Sem alterações de banco, APIs, providers, webhooks, lógica ou handlers.
+
+### Mudanças aplicadas
+
+**Status Geral** — `StatusDot` (ponto inline) substituído por `StatusCard` (cards com borda colorida semântica). Cada card exibe label (uppercase, muted) + status (bold, colorido). Cores: verde=conectado, vermelho=desconectado, âmbar=pendente, cinza=não configurado.
+
+**Aba API Oficial — campo WABA ID** — `onChange` aceita apenas dígitos (`replace(/\D/g, '')`). Detecta e-mail pré-existente no banco via `wabaIdHasEmail = wabaId.includes('@')`: exibe Alert vermelho abaixo do campo + borda vermelha + botão Salvar desabilitado até correção. Placeholder: "Ex: 123456789012345". Help text: "ID numérico da sua WABA. Não é e-mail."
+
+**Aba API Oficial — Webhook** — badge de status no header do card: `Verificado` (verde, `isRegistered && connected`) | `Não verificado` (âmbar) | `Pendente` (cinza, sem config). Derivado de `isRegistered` + `connectionStatus` já existentes.
+
+**Aba QR Code / Evolution** (`channel-connections-panel.tsx`) — label amigável "Conexão Evolution" em vez de raw `QR_CODE`; provider "Evolution API" em vez de `EVOLUTION`; badge de status colorido por estado (verde/vermelho/azul/cinza). Import `Badge` removido; `cn` adicionado.
+
+**Aba Meta Coexistência** — texto explicativo no topo da aba. Alert âmbar quando `NEXT_PUBLIC_META_APP_ID`/`NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` ausentes. Botão "Conectar via Meta" desabilitado quando env vars faltam. Campo "Status" colorido no dl quando conectado.
+
+### Variáveis derivadas adicionadas (antes do return)
+```tsx
+const wabaIdHasEmail = wabaId.includes('@');
+const webhookStatus = !config ? 'pending' : isRegistered && connectionStatus === 'connected' ? 'verified' : 'not_verified';
+const metaEnvConfigured = Boolean(process.env.NEXT_PUBLIC_META_APP_ID && process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID);
+```
+
+## Fase 9.1.5 — Correção da Gestão de Conexões Evolution / QR Code (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commits `a49a8dc` + `435f88c` + `55f9feb`. Deploy `dpl_8frnGMqUWRxCA8qeP9fMij4akTuq` (commit `55f9feb`). **65/65 testes Playwright mantidos.**
+
+Correção de 4 causas-raiz de duplicatas e erros genéricos na gestão de conexões Evolution/QR Code. Sem migrations. Sem alterações à Meta API, Embedded Signup, webhooks ou outros providers.
+
+### Problemas corrigidos
+
+**1. Duplicatas na tabela `account_connections`**
+`POST /api/channels/connections` só verificava `status='pending'` — se existia linha `disconnected` ou `error`, criava nova linha `pending` a cada clique → acúmulo de duplicatas.
+- **Fix** (`route.ts`): para `connection_type='QR_CODE'`, busca TODAS as linhas sem filtro de status; retorna a mais recente (`reused: true`) e deleta as antigas silenciosamente. Para outros tipos (`META_API`, `META_EMBEDDED`), mantém comportamento original (dedup só por `pending`).
+
+**2. Erro "instance already exists" na Evolution**
+`evolution-adapter.ts connect()` chamava `createInstance()` diretamente sem tentar deletar instância prévia. Se o Evolution já tinha a instância (reconnect), retornava 409.
+- **Fix** (`evolution-adapter.ts`): `connect()` agora tenta `deleteInstance(account_id)` antes de `createInstance()`. Se a instância não existe (primeiro setup), Evolution retorna 404 — capturado e ignorado.
+
+**3. Erro genérico retornado ao cliente**
+`/connect/route.ts` gravava o erro real em `last_error` no banco mas retornava apenas `'Failed to provision Evolution instance'` ao cliente.
+- **Fix**: resposta agora inclui `details: err.message` — expõe status HTTP + body da Evolution API (ex: `403 {"status":403,"error":"Forbidden",...}`).
+
+**4. Duplicatas existentes não limpas ao reconectar**
+Mesmo após o fix do POST, linhas duplicadas já existentes no banco só seriam limpas no próximo POST (que ficava oculto pelo `hasQrCodeConnection`).
+- **Fix** (`/connect/route.ts`): antes de provisionar, deleta todas as outras linhas `QR_CODE` do mesmo `account_id`. Clicar "Tentar novamente" em qualquer card converge o banco para 1 linha.
+
+**5. UI não atualizava após erro (fetchConnections faltando no early return)**
+`handleConnect` retornava cedo no erro sem chamar `fetchConnections()` — banco já tinha 1 linha mas React mostrava 3.
+- **Fix** (`channel-connections-panel.tsx`): `fetchConnections()` movido para antes do early return no erro.
+
+### Mudanças de UX em `channel-connections-panel.tsx`
+- **`last_error` visível**: exibido truncado (80 chars) abaixo do badge quando `status='error'`; `title` com mensagem completa
+- **Botão contextual**: `error` → "Tentar novamente" | `disconnected` → "Reconectar" | outros → "Gerar QR"
+- **"Adicionar conexão QR Code" oculto** quando já existe qualquer linha `QR_CODE` (enforcement 1:1 client-side)
+- **Toast com detalhes reais**: `details` da resposta de erro incluído na mensagem do toast
+
+### Arquivos modificados
+- `src/app/api/channels/connections/route.ts` — dedup QR_CODE para todos os statuses + cleanup de duplicatas
+- `src/app/api/channels/connections/[id]/connect/route.ts` — cleanup de duplicatas antes de provisionar + `details` no erro
+- `src/lib/channels/evolution-adapter.ts` — `deleteInstance()` antes de `createInstance()` em `connect()`
+- `src/components/settings/channel-connections-panel.tsx` — `last_error`, botões contextuais, hide "Adicionar", `fetchConnections` no erro
+
+### Estado em produção
+- 1 única linha `QR_CODE` por workspace (as 3 duplicatas foram limpas ao clicar "Tentar novamente")
+- Erro real visível: `Evolution API /instance/create failed: 403 {"status":403,"error":"Forbidden",...}` — problema de credenciais no servidor Evolution do usuário (não é bug de código)
+- Botão "Adicionar conexão QR Code" oculto ✅
+
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.
 - Preservar registros de e-mail/serviços da HostGator (mail, webmail, cpanel, whm).
