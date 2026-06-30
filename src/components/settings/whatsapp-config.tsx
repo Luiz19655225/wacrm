@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Link2,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -24,13 +25,35 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ChannelConnectionsPanel } from './channel-connections-panel';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from '@/components/ui/accordion';
-import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
+import type { WhatsAppConfig as WhatsAppConfigType, AccountConnection } from '@/types';
+
+const TAB_TRIGGER_CLASS = 'data-active:bg-muted data-active:text-primary text-muted-foreground';
+
+function StatusDot({ label, value, color }: {
+  label: string;
+  value: string;
+  color: 'green' | 'red' | 'yellow' | 'gray';
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <span className={cn('size-2 rounded-full', {
+        'bg-emerald-400': color === 'green',
+        'bg-red-400': color === 'red',
+        'bg-amber-400': color === 'yellow',
+        'bg-muted-foreground/40': color === 'gray',
+      })} />
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium text-foreground">{value}</span>
+    </span>
+  );
+}
 
 const MASKED_TOKEN = '••••••••••••••••';
 
@@ -123,6 +146,9 @@ export function WhatsAppConfig() {
 
   const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
   const wabaInfoRef = useRef<{ waba_id: string; phone_number_id?: string } | null>(null);
+
+  // Fetch Evolution connections once for the status strip header
+  const [evolutionConnections, setEvolutionConnections] = useState<AccountConnection[]>([]);
 
   // True once /register has succeeded on Meta's side (timestamp set
   // in the row). When false, the saved config is metadata-only and
@@ -233,9 +259,26 @@ export function WhatsAppConfig() {
     fetchConfig(accountId);
   }, [authLoading, profileLoading, user, accountId, fetchConfig]);
 
+  // Populate status strip with Evolution connection data
+  useEffect(() => {
+    if (authLoading || profileLoading) return;
+    fetch('/api/channels/connections')
+      .then((r) => r.json())
+      .then(({ connections }) => {
+        setEvolutionConnections(
+          (connections ?? []).filter((c: AccountConnection) => c.connection_type === 'QR_CODE'),
+        );
+      })
+      .catch(() => {});
+  }, [authLoading, profileLoading]);
+
   async function handleSave() {
     if (!phoneNumberId.trim()) {
       toast.error('O Phone Number ID é obrigatório');
+      return;
+    }
+    if (wabaId.trim() && wabaId.includes('@')) {
+      toast.error('O campo "WABA ID" não aceita e-mail — localize o ID numérico no Meta Business Suite → Contas do WhatsApp');
       return;
     }
     if (!config && (!accessToken.trim() || !tokenEdited)) {
@@ -538,8 +581,8 @@ export function WhatsAppConfig() {
     return (
       <section className="animate-in fade-in-50 duration-200">
         <SettingsPanelHead
-          title="WhatsApp"
-          description="Gerencie os métodos de conexão do WhatsApp Business."
+          title="Central de Conexões WhatsApp"
+          description="Gerencie os métodos de conexão do WhatsApp Business da sua empresa."
         />
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-primary" />
@@ -549,33 +592,71 @@ export function WhatsAppConfig() {
   }
 
   const showResetBanner = resetReason === 'token_corrupted';
+  const evolutionConnected = evolutionConnections.some((c) => c.connection_status === 'connected');
+  const metaEmbeddedStatus = config?.provider === 'META_EMBEDDED'
+    ? (connectionStatus === 'connected' ? 'connected' : 'pending')
+    : 'not_configured';
 
   return (
     <section className="animate-in fade-in-50 duration-200">
       <SettingsPanelHead
-        title="WhatsApp"
-        description="Três métodos de conexão independentes. Use o que melhor se encaixa no seu fluxo."
+        title="Central de Conexões WhatsApp"
+        description="Gerencie os métodos de conexão do WhatsApp Business da sua empresa."
       />
-      <div className="space-y-8">
 
-        {/* ── MÉTODO 1: QR Code / Evolution API ── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              1
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">WhatsApp QR Code / Evolution API</h2>
-          </div>
-          <ChannelConnectionsPanel />
+      {/* ── Status Strip ── */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-muted/30 px-4 py-3">
+        <span className="text-xs font-medium text-muted-foreground">Status geral</span>
+        <StatusDot
+          label="Evolution"
+          value={evolutionConnected ? 'Conectado' : 'Desconectado'}
+          color={evolutionConnected ? 'green' : 'red'}
+        />
+        <StatusDot
+          label="API Oficial"
+          value={connectionStatus === 'connected' ? 'Configurada' : 'Não configurada'}
+          color={connectionStatus === 'connected' ? 'green' : 'gray'}
+        />
+        <StatusDot
+          label="Meta Coexistência"
+          value={
+            metaEmbeddedStatus === 'connected'
+              ? 'Conectada'
+              : metaEmbeddedStatus === 'pending'
+              ? 'Configuração pendente'
+              : 'Não configurada'
+          }
+          color={
+            metaEmbeddedStatus === 'connected'
+              ? 'green'
+              : metaEmbeddedStatus === 'pending'
+              ? 'yellow'
+              : 'gray'
+          }
+        />
+      </div>
+
+      <Tabs defaultValue="api-oficial">
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="bg-muted/50">
+            <TabsTrigger value="api-oficial" className={TAB_TRIGGER_CLASS}>
+              API Oficial
+            </TabsTrigger>
+            <TabsTrigger value="qr-code" className={TAB_TRIGGER_CLASS}>
+              QR Code / Evolution
+            </TabsTrigger>
+            <TabsTrigger value="meta" className={TAB_TRIGGER_CLASS}>
+              Meta Coexistência
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        {/* ── MÉTODO 2: API Oficial Manual / Meta Cloud API ── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              2
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">API Oficial Manual / Meta Cloud API</h2>
+        {/* ── ABA 1: API Oficial ── */}
+        <TabsContent value="api-oficial" className="mt-6">
+          <div className="mb-5">
+            <p className="text-sm text-muted-foreground">
+              Configure manualmente as credenciais da Meta Cloud API (WhatsApp Business). Use esta opção quando você possui uma conta Meta Business com credenciais próprias.
+            </p>
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
             <div className="space-y-6">
@@ -739,28 +820,34 @@ export function WhatsAppConfig() {
                 <CardHeader>
                   <CardTitle className="text-foreground">Credenciais da API</CardTitle>
                   <CardDescription className="text-muted-foreground">
-                    Digite as credenciais da sua Meta WhatsApp Business API.
+                    Insira as credenciais da sua Meta WhatsApp Business API.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label className="text-muted-foreground">Phone Number ID</Label>
                     <Input
-                      placeholder="ex: 100234567890123"
+                      placeholder="ID numérico do número, ex: 123456789012345"
                       value={phoneNumberId}
                       onChange={(e) => setPhoneNumberId(e.target.value)}
                       className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Encontrado em Meta Business Suite → WhatsApp → API Setup.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-muted-foreground">WhatsApp Business Account ID</Label>
+                    <Label className="text-muted-foreground">WhatsApp Business Account ID (WABA)</Label>
                     <Input
-                      placeholder="ex: 100234567890456"
+                      placeholder="ID numérico da conta WABA, ex: 123456789012345"
                       value={wabaId}
                       onChange={(e) => setWabaId(e.target.value)}
                       className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      ID numérico — não é um e-mail. Localizado em Meta Business Suite → Contas do WhatsApp.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -768,7 +855,7 @@ export function WhatsAppConfig() {
                     <div className="relative">
                       <Input
                         type={showToken ? 'text' : 'password'}
-                        placeholder="Digite seu access token"
+                        placeholder="EAA... (token permanente gerado em Business Settings → System Users)"
                         value={accessToken}
                         onChange={(e) => {
                           setAccessToken(e.target.value);
@@ -800,13 +887,13 @@ export function WhatsAppConfig() {
                   <div className="space-y-2">
                     <Label className="text-muted-foreground">Webhook Verify Token</Label>
                     <Input
-                      placeholder="Crie um verify token personalizado"
+                      placeholder="Crie uma string segura, ex: wavon_verify_2024"
                       value={verifyToken}
                       onChange={(e) => setVerifyToken(e.target.value)}
                       className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Uma string personalizada criada por você. Deve ser igual ao token que você definir nas configurações de webhook da Meta.
+                      String criada por você. Deve ser idêntica ao verify token configurado no painel de webhook da Meta.
                     </p>
                   </div>
 
@@ -1027,16 +1114,20 @@ export function WhatsAppConfig() {
               </Card>
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        {/* ── MÉTODO 3: Meta Embedded Signup / Coexistência ── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              3
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">Meta Embedded Signup / Coexistência</h2>
+        {/* ── ABA 2: QR Code / Evolution ── */}
+        <TabsContent value="qr-code" className="mt-6">
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Conecte o WhatsApp via QR Code usando a Evolution API. Ideal para automações e atendimento sem necessidade de conta Meta Business própria.
+            </p>
+            <ChannelConnectionsPanel filterTypes={['QR_CODE']} />
           </div>
+        </TabsContent>
+
+        {/* ── ABA 3: Meta Coexistência ── */}
+        <TabsContent value="meta" className="mt-6">
           <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
               <CardTitle className="text-foreground flex items-center gap-2 text-base">
@@ -1047,20 +1138,60 @@ export function WhatsAppConfig() {
                 Autorize o acesso diretamente na sua conta Meta Business sem precisar copiar credenciais manualmente.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {config?.provider === 'META_EMBEDDED' ? (
-                <Alert className="bg-emerald-950/30 border-emerald-700/50 mb-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-400" />
-                    <AlertTitle className="text-emerald-200 mb-0 text-sm">
-                      Conectado via Embedded Signup
-                    </AlertTitle>
-                  </div>
-                  <AlertDescription className="text-muted-foreground text-xs mt-1">
-                    Esta conta já está conectada via Meta Embedded Signup. Para reconectar, clique no botão abaixo.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
+            <CardContent className="space-y-4">
+              {metaEmbeddedStatus !== 'not_configured' ? (
+                <>
+                  <Alert className="bg-emerald-950/30 border-emerald-700/50">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="size-4 text-emerald-400" />
+                      <AlertTitle className="text-emerald-200 mb-0 text-sm">
+                        Conectado via Embedded Signup
+                      </AlertTitle>
+                    </div>
+                    <AlertDescription className="text-muted-foreground text-xs mt-1">
+                      Esta conta está conectada via Meta Embedded Signup. Para reconectar, clique no botão abaixo.
+                    </AlertDescription>
+                  </Alert>
+
+                  <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+                    <dt className="text-muted-foreground">Telefone conectado</dt>
+                    <dd className="font-mono text-foreground">{config?.phone_number_id || '—'}</dd>
+                    <dt className="text-muted-foreground">WABA</dt>
+                    <dd className="font-mono text-foreground">{config?.waba_id || '—'}</dd>
+                    <dt className="text-muted-foreground">Empresa (Portfolio ID)</dt>
+                    <dd className="text-foreground">{config?.organization_id || '—'}</dd>
+                    <dt className="text-muted-foreground">Última sincronização</dt>
+                    <dd className="text-foreground">
+                      {config?.subscribed_apps_at
+                        ? new Date(config.subscribed_apps_at).toLocaleString('pt-BR')
+                        : config?.connected_at
+                        ? new Date(config.connected_at).toLocaleString('pt-BR')
+                        : '—'}
+                    </dd>
+                  </dl>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Ainda não configurado. Siga as etapas abaixo para conectar:
+                  </p>
+                  <ol className="space-y-2 list-none">
+                    {[
+                      'Clique em "Conectar via Meta" abaixo.',
+                      'Autorize o acesso no painel da Meta Business que será aberto na tela.',
+                      'As credenciais serão preenchidas automaticamente — nenhuma cópia manual necessária.',
+                    ].map((step, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
+                          {i + 1}
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
               <Button
                 onClick={handleEmbeddedSignup}
                 disabled={embeddedSignupLoading}
@@ -1074,7 +1205,7 @@ export function WhatsAppConfig() {
                 ) : (
                   <>
                     <Link2 className="size-4" />
-                    {config?.provider === 'META_EMBEDDED'
+                    {metaEmbeddedStatus !== 'not_configured'
                       ? 'Reconectar via Meta'
                       : 'Conectar via Meta'}
                   </>
@@ -1082,9 +1213,8 @@ export function WhatsAppConfig() {
               </Button>
             </CardContent>
           </Card>
-        </div>
-
-      </div>
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }

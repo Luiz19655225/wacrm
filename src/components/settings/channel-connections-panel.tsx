@@ -16,18 +16,6 @@ import {
 } from "@/components/ui/card";
 import type { AccountConnection } from "@/types";
 
-/**
- * Channel connections — Fase 3.
- *
- * Extracted out of billing-panel.tsx (where this card lived since
- * Fase 1, purely by co-location, not because it's a billing concern)
- * so WhatsApp/Evolution work never has to touch the billing component.
- * Fully self-contained: fetches its own data, polls on its own while a
- * QR pairing is in flight. Your existing WhatsApp setup in the
- * WhatsApp section is a separate table (whatsapp_config) and is
- * unaffected by anything here.
- */
-
 const POLL_INTERVAL_MS = 4000;
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,7 +30,12 @@ function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-export function ChannelConnectionsPanel() {
+interface ChannelConnectionsPanelProps {
+  /** When provided, only displays connections whose connection_type is in this list. */
+  filterTypes?: string[];
+}
+
+export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanelProps = {}) {
   const { canEditSettings } = useAuth();
 
   const [connections, setConnections] = useState<AccountConnection[]>([]);
@@ -93,6 +86,13 @@ export function ChannelConnectionsPanel() {
       }
     };
   }, [connections, fetchConnections]);
+
+  const displayedConnections = filterTypes
+    ? connections.filter((c) => filterTypes.includes(c.connection_type))
+    : connections;
+
+  const showAddQrButton = !filterTypes || filterTypes.includes("QR_CODE");
+  const showAddMetaButton = !filterTypes || filterTypes.includes("META_API");
 
   const hasPendingOfType = (type: "QR_CODE" | "META_API") =>
     connections.some((c) => c.connection_type === type && c.connection_status === "pending");
@@ -164,17 +164,22 @@ export function ChannelConnectionsPanel() {
     }
   }
 
+  const cardTitle = filterTypes?.length === 1 && filterTypes[0] === "QR_CODE"
+    ? "Conexões Evolution (QR Code)"
+    : "Conexões de canal";
+
+  const cardDescription = filterTypes?.length === 1 && filterTypes[0] === "QR_CODE"
+    ? "Conecte o WhatsApp escaneando o QR Code via Evolution API."
+    : "Conecte o WhatsApp via QR Code (Evolution API) ou Meta API. Sua configuração existente do WhatsApp na seção WhatsApp não é afetada.";
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-foreground">
           <Plug className="size-4 text-primary" />
-          Conexões de canal
+          {cardTitle}
         </CardTitle>
-        <CardDescription>
-          Conecte o WhatsApp via QR Code (Evolution API) ou Meta API. Sua
-          configuração existente do WhatsApp na seção WhatsApp não é afetada.
-        </CardDescription>
+        <CardDescription>{cardDescription}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {loading ? (
@@ -182,8 +187,12 @@ export function ChannelConnectionsPanel() {
             <Loader2 className="size-4 animate-spin" />
             Carregando...
           </div>
+        ) : displayedConnections.length === 0 ? (
+          <p className="py-2 text-sm text-muted-foreground">
+            Nenhuma conexão encontrada. Clique em &ldquo;Adicionar conexão QR Code&rdquo; para começar.
+          </p>
         ) : (
-          connections.map((conn) => {
+          displayedConnections.map((conn) => {
             const qrcodeBase64 = conn.metadata?.qrcode_base64 as string | undefined;
             return (
               <div key={conn.id} className="space-y-2 rounded-lg border border-border p-3">
@@ -193,8 +202,16 @@ export function ChannelConnectionsPanel() {
                       {conn.label ?? conn.connection_type}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {conn.provider} · {statusLabel(conn.connection_status)}
+                      {conn.provider}
+                      {conn.phone_number ? ` · ${conn.phone_number}` : ""}
+                      {" · "}
+                      {statusLabel(conn.connection_status)}
                     </p>
+                    {conn.updated_at && (
+                      <p className="text-xs text-muted-foreground/60">
+                        Atualizado em {new Date(conn.updated_at).toLocaleString("pt-BR")}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{statusLabel(conn.connection_status)}</Badge>
@@ -209,6 +226,8 @@ export function ChannelConnectionsPanel() {
                         >
                           {connectingId === conn.id ? (
                             <Loader2 className="size-3.5 animate-spin" />
+                          ) : conn.connection_status === "disconnected" ? (
+                            "Reconectar"
                           ) : (
                             "Gerar QR"
                           )}
@@ -220,6 +239,7 @@ export function ChannelConnectionsPanel() {
                         variant="ghost"
                         disabled={removingId === conn.id}
                         onClick={() => handleDisconnect(conn.id)}
+                        title="Desconectar"
                       >
                         {removingId === conn.id ? (
                           <Loader2 className="size-3.5 animate-spin" />
@@ -253,34 +273,38 @@ export function ChannelConnectionsPanel() {
           })
         )}
 
-        {canEditSettings && (
+        {canEditSettings && (showAddQrButton || showAddMetaButton) && (
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={addingConnection === "QR_CODE" || hasPendingOfType("QR_CODE")}
-              onClick={() => handleAddConnection("QR_CODE")}
-            >
-              {addingConnection === "QR_CODE" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <QrCode className="size-3.5" />
-              )}
-              {hasPendingOfType("QR_CODE") ? "QR Code pendente" : "Adicionar conexão QR Code"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={addingConnection === "META_API" || hasPendingOfType("META_API")}
-              onClick={() => handleAddConnection("META_API")}
-            >
-              {addingConnection === "META_API" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Plug className="size-3.5" />
-              )}
-              {hasPendingOfType("META_API") ? "Meta API pendente" : "Adicionar conexão Meta API"}
-            </Button>
+            {showAddQrButton && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={addingConnection === "QR_CODE" || hasPendingOfType("QR_CODE")}
+                onClick={() => handleAddConnection("QR_CODE")}
+              >
+                {addingConnection === "QR_CODE" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <QrCode className="size-3.5" />
+                )}
+                {hasPendingOfType("QR_CODE") ? "QR Code pendente" : "Adicionar conexão QR Code"}
+              </Button>
+            )}
+            {showAddMetaButton && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={addingConnection === "META_API" || hasPendingOfType("META_API")}
+                onClick={() => handleAddConnection("META_API")}
+              >
+                {addingConnection === "META_API" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Plug className="size-3.5" />
+                )}
+                {hasPendingOfType("META_API") ? "Meta API pendente" : "Adicionar conexão Meta API"}
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
