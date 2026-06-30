@@ -70,7 +70,7 @@ export async function createInstance(
       webhook: {
         url: webhookUrl,
         headers: { Authorization: `Bearer ${webhookToken}` },
-        byEvents: false,
+        byEvents: true,  // fire only for the events listed below, not all events
         events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT'],
       },
     }),

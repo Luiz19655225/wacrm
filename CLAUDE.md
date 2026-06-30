@@ -896,6 +896,34 @@ Mesmo após o fix do POST, linhas duplicadas já existentes no banco só seriam 
 - Erro real visível: `Evolution API /instance/create failed: 403 {"status":403,"error":"Forbidden",...}` — problema de credenciais no servidor Evolution do usuário (não é bug de código)
 - Botão "Adicionar conexão QR Code" oculto ✅
 
+## Fase 9.1.5 pós-QR — Diagnóstico e Auto-refresh do QR Code Evolution (30/06/2026) — ✅ DEPLOYADA
+Deploy `dpl_6boQ9YMKisLKTY8RS82rUVe9JzBS`. **65/65 testes Playwright mantidos.**
+
+Diagnóstico e correções para "QR Code gerado mas WhatsApp não conectou ao escanear". Foco exclusivo em Evolution QR Code — Meta API, Embedded Signup e outros providers não alterados.
+
+### Causas diagnosticadas
+
+1. **QR expira em ~40s** — não havia countdown nem auto-refresh; usuário podia escanear QR vencido sem saber
+2. **`byEvents: false`** — Evolution enviava TODOS os eventos ao webhook (não só os 3 necessários), gerando overhead
+3. **Sem diagnóstico de estado ao vivo** — não havia como verificar se a Evolution API recebeu o scan independentemente do webhook
+
+### Mudanças implementadas
+
+**`src/lib/whatsapp/evolution-api.ts`**
+- `byEvents: false` → `byEvents: true`: Evolution passa a enviar apenas `QRCODE_UPDATED`, `CONNECTION_UPDATE`, `MESSAGES_UPSERT`
+
+**`src/app/api/channels/connections/[id]/status/route.ts`** (novo)
+- `GET /api/channels/connections/[id]/status` — estado ao vivo da Evolution (`evolutionState`: 'open'|'close'|'connecting'), status no banco (`dbStatus`), webhook URL configurada. Acessado pelo botão "Verificar" da UI.
+
+**`src/components/settings/channel-connections-panel.tsx`**
+- `STATUS_LABELS` corrigido: 'qrcode_ready' → "Aguardando leitura"; 'error' → "Erro"; removido 'failed' inexistente
+- **Countdown bar**: barra verde→âmbar→vermelha mostrando segundos restantes até expirar (~40s)
+- **Auto-refresh automático**: quando `secsLeft=0`, effect chama `handleConnect()` via ref (guard `autoRefreshedRef` previne double-fire); se Evolution já enviou novo QR via webhook antes do timer, a barra reinicia automaticamente a partir do novo `updated_at`
+- **Estados visuais do QR**: imagem+countdown ativo | spinner "gerando novo..." (expirado) | spinner "aguardando QR Code..." (webhook pendente) | spinner "gerando..." (provisioning)
+- **Botão "Verificar"**: aparece para QR_CODE com `external_id`; abre bloco inline com estado Evolution colorido + diagnóstico contextual (ex: "Evolution=open mas DB≠connected → verifique EVOLUTION_WEBHOOK_TOKEN e NEXT_PUBLIC_SITE_URL")
+- **Botão "Atualizar QR"**: label substitui "Gerar QR" quando `qrcode_ready`, com ícone RefreshCcw
+- **Tick state (`tickNow`)**: ativo apenas quando QR visível, desligado fora disso
+
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.
 - Preservar registros de e-mail/serviços da HostGator (mail, webmail, cpanel, whm).
