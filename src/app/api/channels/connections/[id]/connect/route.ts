@@ -71,7 +71,10 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
-      return NextResponse.json({ error: 'Failed to provision Evolution instance' }, { status: 502 })
+      return NextResponse.json({
+        error: 'Failed to provision Evolution instance',
+        details: err instanceof Error ? err.message : 'Unknown error',
+      }, { status: 502 })
     }
 
     const metadata = {

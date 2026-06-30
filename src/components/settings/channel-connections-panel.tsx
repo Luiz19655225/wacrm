@@ -91,7 +91,10 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
     ? connections.filter((c) => filterTypes.includes(c.connection_type))
     : connections;
 
-  const showAddQrButton = !filterTypes || filterTypes.includes("QR_CODE");
+  // Hide "Adicionar QR Code" when a connection already exists — we enforce
+  // one Evolution instance per workspace (instanceName = accountId).
+  const hasQrCodeConnection = connections.some((c) => c.connection_type === "QR_CODE");
+  const showAddQrButton = (!filterTypes || filterTypes.includes("QR_CODE")) && !hasQrCodeConnection;
   const showAddMetaButton = !filterTypes || filterTypes.includes("META_API");
 
   const hasPendingOfType = (type: "QR_CODE" | "META_API") =>
@@ -104,8 +107,11 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
         method: "POST",
       });
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: null }));
-        toast.error(error ?? "Falha ao iniciar o pareamento do WhatsApp");
+        const body = await res.json().catch(() => ({ error: null, details: null }));
+        const msg = body.details
+          ? `${body.error ?? "Falha ao iniciar o pareamento"}: ${body.details}`
+          : body.error ?? "Falha ao iniciar o pareamento do WhatsApp";
+        toast.error(msg);
         return;
       }
       await fetchConnections();
@@ -213,6 +219,16 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
                       {providerLabel}
                       {conn.phone_number ? ` · ${conn.phone_number}` : ""}
                     </p>
+                    {conn.connection_status === "error" && conn.last_error && (
+                      <p
+                        className="mt-0.5 max-w-xs truncate text-xs text-red-400"
+                        title={conn.last_error}
+                      >
+                        {conn.last_error.length > 80
+                          ? conn.last_error.slice(0, 80) + "…"
+                          : conn.last_error}
+                      </p>
+                    )}
                     {conn.updated_at && (
                       <p className="text-xs text-muted-foreground/60">
                         Atualizado em {new Date(conn.updated_at).toLocaleString("pt-BR")}
@@ -243,6 +259,8 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
                             <Loader2 className="size-3.5 animate-spin" />
                           ) : conn.connection_status === "disconnected" ? (
                             "Reconectar"
+                          ) : conn.connection_status === "error" ? (
+                            "Tentar novamente"
                           ) : (
                             "Gerar QR"
                           )}

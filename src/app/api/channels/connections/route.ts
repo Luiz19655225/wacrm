@@ -91,34 +91,73 @@ export async function POST(request: Request) {
 
     const provider = TYPE_PROVIDER_PAIRS[connectionType as ChannelConnectionType];
 
-    // Avoid piling up placeholder rows: if this account already has
-    // a 'pending' connection of this exact type, hand that one back
-    // instead of creating a duplicate (Phase 1 left this as a known
-    // non-blocking gap — see 028_account_connections.sql history).
-    //
-    // Ordered + limit(1) rather than `.maybeSingle()`: accounts that
-    // already accumulated duplicate pending rows before this guard
-    // existed would otherwise make `.maybeSingle()` itself error out
-    // ("multiple rows returned"), turning every future click into a
-    // 500 instead of gracefully converging on the oldest pending row.
-    const { data: existingPendingRows, error: existingError } = await ctx.supabase
-      .from("account_connections")
-      .select(CONNECTION_FIELDS)
-      .eq("account_id", ctx.accountId)
-      .eq("connection_type", connectionType)
-      .eq("connection_status", "pending")
-      .order("created_at", { ascending: true })
-      .limit(1);
+    // QR_CODE/EVOLUTION: enforce one connection per workspace.
+    // Evolution maps instanceName = accountId (1:1), so more than one
+    // QR_CODE row for the same account is always a mistake — the second
+    // instance would collide with the first on the Evolution server.
+    // Return the most-recent existing row and silently delete any
+    // older duplicates that may have accumulated before this guard.
+    if (connectionType === "QR_CODE") {
+      const { data: existingRows, error: existingError } = await ctx.supabase
+        .from("account_connections")
+        .select(CONNECTION_FIELDS)
+        .eq("account_id", ctx.accountId)
+        .eq("connection_type", "QR_CODE")
+        .order("created_at", { ascending: false }); // most recent first
 
-    if (existingError) {
-      console.error("[POST /api/channels/connections] existing-pending lookup error:", existingError);
-      return NextResponse.json(
-        { error: "Failed to check existing connections" },
-        { status: 500 },
-      );
-    }
-    if (existingPendingRows && existingPendingRows.length > 0) {
-      return NextResponse.json({ connection: existingPendingRows[0], reused: true });
+      if (existingError) {
+        console.error("[POST /api/channels/connections] QR_CODE lookup error:", existingError);
+        return NextResponse.json(
+          { error: "Failed to check existing connections" },
+          { status: 500 },
+        );
+      }
+
+      if (existingRows && existingRows.length > 0) {
+        const primary = existingRows[0];
+
+        // Purge stale duplicates so the UI only ever shows one row
+        if (existingRows.length > 1) {
+          const staleIds = existingRows.slice(1).map((c: Record<string, unknown>) => c.id as string);
+          const { error: delErr } = await ctx.supabase
+            .from("account_connections")
+            .delete()
+            .in("id", staleIds)
+            .eq("account_id", ctx.accountId); // safety guard
+          if (delErr) {
+            console.warn("[POST /api/channels/connections] stale QR_CODE cleanup failed:", delErr);
+          } else {
+            console.info(
+              `[POST /api/channels/connections] purged ${staleIds.length} duplicate QR_CODE rows for account ${ctx.accountId}`,
+            );
+          }
+        }
+
+        return NextResponse.json({ connection: primary, reused: true });
+      }
+      // No existing QR_CODE connection → fall through to INSERT
+    } else {
+      // Non-QR_CODE types (META_API, META_EMBEDDED): keep the original
+      // pending-only dedup. Multiple META_API connections are allowed.
+      const { data: existingPendingRows, error: existingError } = await ctx.supabase
+        .from("account_connections")
+        .select(CONNECTION_FIELDS)
+        .eq("account_id", ctx.accountId)
+        .eq("connection_type", connectionType)
+        .eq("connection_status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (existingError) {
+        console.error("[POST /api/channels/connections] existing-pending lookup error:", existingError);
+        return NextResponse.json(
+          { error: "Failed to check existing connections" },
+          { status: 500 },
+        );
+      }
+      if (existingPendingRows && existingPendingRows.length > 0) {
+        return NextResponse.json({ connection: existingPendingRows[0], reused: true });
+      }
     }
 
     const { data, error } = await ctx.supabase

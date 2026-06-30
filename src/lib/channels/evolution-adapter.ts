@@ -63,6 +63,16 @@ export const evolutionAdapter: ChannelAdapter = {
     // instanceName = account_id: stable 1:1 mapping the webhook
     // resolves back via account_connections.external_id (enforced
     // unique per migration 030_evolution_connections.sql).
+    //
+    // Delete any pre-existing Evolution instance before recreating it.
+    // instanceName is deterministic (= account_id), so we don't need
+    // external_id to be set — we know the name. If Evolution returns
+    // 404 (first-time setup), we catch and continue.
+    try {
+      await deleteInstance(connection.account_id);
+    } catch {
+      // Instance may not exist yet — that is fine.
+    }
     const result = await createInstance(connection.account_id, webhookUrl(), webhookToken());
     return { qrcodeBase64: result.qrcodeBase64 };
   },
