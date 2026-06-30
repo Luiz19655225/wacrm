@@ -203,7 +203,7 @@ async function persistToWhatsAppConfig({
     .maybeSingle();
 
   // coexistence_enabled = true when there was a prior manual connection.
-  const coexistenceEnabled = !!existing && existing.provider !== 'meta_embedded';
+  const coexistenceEnabled = !!existing && existing.provider !== 'META_EMBEDDED';
 
   const { error } = await supabase
     .from('whatsapp_config')
@@ -214,7 +214,7 @@ async function persistToWhatsAppConfig({
         waba_id: wabaId,
         access_token: tokenEncrypted,
         status: 'connected',
-        provider: 'meta_embedded',
+        provider: 'META_EMBEDDED',
         coexistence_enabled: coexistenceEnabled,
         organization_id: organizationId ?? null,
         connected_at: new Date().toISOString(),

@@ -733,7 +733,7 @@ export function WhatsAppConfig() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {config?.provider === 'meta_embedded' ? (
+            {config?.provider === 'META_EMBEDDED' ? (
               <Alert className="bg-emerald-950/30 border-emerald-700/50 mb-3">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-emerald-400" />
@@ -759,7 +759,7 @@ export function WhatsAppConfig() {
               ) : (
                 <>
                   <Link2 className="size-4" />
-                  {config?.provider === 'meta_embedded'
+                  {config?.provider === 'META_EMBEDDED'
                     ? 'Reconectar via Meta'
                     : 'Conectar via Meta'}
                 </>

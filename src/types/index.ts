@@ -273,8 +273,8 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
-  /** How this config was created: 'manual' (form) or 'meta_embedded' (OAuth). */
-  provider?: 'manual' | 'meta_embedded';
+  /** How this config was created: 'MANUAL' (form) or 'META_EMBEDDED' (OAuth). */
+  provider?: 'MANUAL' | 'META_EMBEDDED';
   /** True when both manual and embedded signup connections coexist for this account. */
   coexistence_enabled?: boolean;
   /** Meta Business Portfolio ID — set by Embedded Signup, null for manual. */
