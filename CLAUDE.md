@@ -739,6 +739,40 @@ Novo método de conexão WhatsApp via OAuth da Meta (Embedded Signup). Coexiste 
 5. Adicionar `NEXT_PUBLIC_META_APP_ID` e `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` no Vercel Dashboard
 6. Aplicar `supabase/migrations/041_meta_embedded_signup.sql` no SQL Editor do Supabase
 
+## Fase 9.1.1 — Compliance, LGPD e Páginas Institucionais (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commit `51b05b4`. Deploy `dpl_DhuZLrRzPAjG3P7izuyZyChDdTFr`. **65/65 testes Playwright mantidos.**
+
+5 páginas públicas estáticas de conformidade, sem necessidade de autenticação. Acessíveis no footer do site institucional e no footer de cada página legal.
+
+### Arquitetura
+
+- **Route group `(legal)`**: `src/app/(legal)/layout.tsx` — layout compartilhado com `MarketingNav` + `main` + `Footer`, mesmo padrão de `(docs)`. Geração estática (`○`) — nenhuma chamada ao banco.
+- **Footer atualizado**: `src/components/marketing/footer.tsx` — 5 links institucionais + Contato; copyright dinâmico `{new Date().getFullYear()}`.
+- **Cada página**: Server Component, `export const metadata: Metadata`, `<script type="application/ld+json">` inline com `WebPage` + `BreadcrumbList` Schema.org, breadcrumb de navegação visível, footer nav entre páginas irmãs.
+
+### Páginas criadas
+
+| Rota | Arquivo | Seções | Destaques |
+|------|---------|--------|-----------|
+| `/politica-de-privacidade` | `src/app/(legal)/politica-de-privacidade/page.tsx` | 11 | Bases legais LGPD art. 7.º; 8 subsections de dados coletados (cadastro/WhatsApp/GCal/Outlook/IA/analytics/billing/técnicos); DPO `lgpd@wavon.com.br` |
+| `/termos-de-uso` | `src/app/(legal)/termos-de-uso/page.tsx` | 14 | Uso proibido, propriedade intelectual, limitação de responsabilidade, foro São Paulo/SP |
+| `/exclusao-de-dados` | `src/app/(legal)/exclusao-de-dados/page.tsx` | 7 | 2 métodos (plataforma + e-mail), prazo 15 dias úteis, exceções LGPD art. 16, ANPD |
+| `/cookies` | `src/app/(legal)/cookies/page.tsx` | 9 | Tabela essenciais (`sb-*-auth-token`, `wavon-theme`, `wavon-mode`) + analytics (`_ga`, `_fbp`); FB SDK lazy load |
+| `/lgpd` | `src/app/(legal)/lgpd/page.tsx` | 9 | 10 direitos do titular (art. 18), 4 bases legais cards, tabela de retenção por tipo de dado, 7 medidas de segurança |
+
+### SEO por página (metadados)
+- `alternates.canonical`: URL canônica completa `https://www.wavon.com.br/<rota>`
+- `openGraph`: `title`, `description`, `url`, `siteName: "WAVON"`, `locale: "pt_BR"`, `type: "website"`
+- `twitter`: `card: "summary"`, `title`, `description`
+- `robots`: `{ index: true, follow: true }`
+
+### Validação em produção (30/06/2026)
+- `/politica-de-privacidade`: MarketingNav + breadcrumb + 11 seções + footer com 5 links institucionais ✅
+- `/termos-de-uso`: MarketingNav + breadcrumb + 14 seções ✅
+- `/exclusao-de-dados`: MarketingNav + breadcrumb + cards de opção 1/2 ✅
+- `/cookies`: MarketingNav + breadcrumb + tabela de cookies renderizada ✅
+- `/lgpd`: MarketingNav + breadcrumb + 10 direitos + 9 seções ✅
+
 ## Próxima fase planejada
 A definir (após conclusão das pendências manuais da Fase 9.1).
 
@@ -757,7 +791,42 @@ WAVON em produção (`www.wavon.com.br`) com:
 - Agendamento Inteligente 2.0 (Fase 7.3 + 7.3.1): IA sempre ativa, marcador `[AGENDAR]`, Google Calendar + Meet, dialog 2 etapas no Inbox, picker inline no Widget
 - **Agenda nativa (Fases 8.0–8.3)**: calendário mensal, sincronização Google Calendar (multi-calendário), filtros, criação de compromissos ("Novo compromisso"), ações de status, preferências de comunicação por compromisso, histórico de alterações, confirmação automática via WhatsApp, **lembretes automáticos via cron** (ativo em produção via cron-job.org — 15min, HTTP 200 validado, dedup atômico PostgreSQL, retry em falha) — **38/38 testes Playwright passando em produção**
 
-Todas as migrations `024` a `039` aplicadas em produção.
+Todas as migrations `024` a `041` aplicadas em produção.
+
+## Fase 9.1.2 — Reorganização dos Conectores WhatsApp (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commit `b343bf3`. Deploy `wavon-oo3l7e9gn`. **65/65 testes Playwright mantidos.**
+
+Reorganização puramente visual de Configurações → WhatsApp em 3 cards independentes. Nenhum provider removido, nenhuma lógica alterada, nenhuma migration.
+
+### Estrutura da nova UI
+
+| Card | Título | Conteúdo |
+|------|--------|----------|
+| 1 | WhatsApp QR Code / Evolution API | `ChannelConnectionsPanel` existente (QR code, status de conexão, polling, "Gerar QR", desconectar) |
+| 2 | API Oficial Manual / Meta Cloud API | Banners de status (credenciais + registro) + form completo (Phone Number ID, WABA ID, Access Token, Verify Token, PIN) + webhook URL + botões Salvar/Testar/Redefinir + accordion de instruções (coluna direita) |
+| 3 | Meta Embedded Signup / Coexistência | Card isolado com botão "Conectar via Meta" + badge de status `META_EMBEDDED` |
+
+### Arquivo modificado
+- `src/components/settings/whatsapp-config.tsx` — adicionado import `ChannelConnectionsPanel`; JSX reestruturado de `grid lg:grid-cols-[1fr_380px]` flat para `space-y-8` com 3 seções numeradas
+
+## Fase 9.1.3 — UX da Central de Conexões WhatsApp (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commit `cbf18b0`. Deploy `dpl_G3BxddmrP9Ewp1KqHyDBHg12arE5`. **65/65 testes Playwright mantidos.**
+
+Reorganização UX-only de Configurações → WhatsApp: 3 abas horizontais + status strip. Sem alterações de banco, APIs, providers, webhooks, lógica ou handlers.
+
+### Nova estrutura — "Central de Conexões WhatsApp"
+
+| Aba | Rótulo | Conteúdo |
+|-----|--------|----------|
+| 1 (padrão) | API Oficial | Descrição + banners de status (credenciais + registro) + form completo 5 campos + webhook + botões Salvar/Testar/Redefinir + accordion instruções (coluna direita 380px) |
+| 2 | QR Code / Evolution | `ChannelConnectionsPanel` com `filterTypes={['QR_CODE']}` — exibe apenas conexões Evolution; botão Gerar QR/Reconectar contextual; estado vazio com mensagem |
+| 3 | Meta Coexistência | Simplificado: dl com Telefone/WABA/Empresa/Última sync quando configurado; 3 etapas resumidas quando não configurado; botão "Conectar via Meta" |
+
+**Status strip** acima das abas: 3 badges (Evolution 🟢/🔴, API Oficial 🟢/⚪, Meta Coexistência 🟢/🟡/⚪) — gerado com fetch ao `/api/channels/connections` na carga do componente.
+
+### Arquivos modificados
+- `src/components/settings/whatsapp-config.tsx` — título, status strip, `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent`, validação e-mail no WABA ID, placeholders melhorados; lógica e handlers preservados 100%
+- `src/components/settings/channel-connections-panel.tsx` — prop `filterTypes?: string[]` (filtra display client-side); título/descrição contextuais; exibe `phone_number` e `updated_at`; botão "Reconectar" para status `disconnected`; estado vazio com orientação
 
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.

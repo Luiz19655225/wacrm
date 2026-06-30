@@ -291,8 +291,54 @@ Pendências obrigatórias (ações manuais na Meta):
 - [x] Migration `041_meta_embedded_signup.sql` aplicada no Supabase (30/06/2026) — constraints `SITE_WIDGET` preservadas, `whatsapp_config.provider` default `'MANUAL'`
 - [x] Validação browser em produção (30/06/2026): card "Conectar via Meta" renderizado, botão funciona, toast de erro correto ao clicar sem env vars configuradas
 
+## Fase 9.1.1 — Compliance, LGPD e Páginas Institucionais (30/06/2026)
+✅ Concluída e validada em produção (commits `51b05b4` + `bad7568`) — deploy final com `contato@wavon.com.br` em todas as páginas
+
+- [x] 5 páginas públicas estáticas com MarketingNav + Footer + breadcrumb + Schema.org JSON-LD (WebPage + BreadcrumbList)
+- [x] `/politica-de-privacidade` — 11 seções (LGPD art. 7.º, 18, coleta por tipo de dado, DPO `lgpd@wavon.com.br`)
+- [x] `/termos-de-uso` — 14 seções (elegibilidade, pagamentos, cancelamento, limitação, foro Comarca de SP/SP)
+- [x] `/exclusao-de-dados` — 7 seções (2 métodos, documentos, prazo 15 dias úteis, exceções LGPD art. 16, ANPD)
+- [x] `/cookies` — 9 seções com tabela de cookies (essenciais: `sb-*-auth-token`, `wavon-theme`, `wavon-mode`; analytics: `_ga`, `_fbp`)
+- [x] `/lgpd` — 9 seções (10 direitos do titular art. 18, 4 bases legais, tabela de retenção, 7 medidas de segurança, ANPD)
+- [x] Route group `(legal)` com layout compartilhado (`MarketingNav` + `main` + `Footer`) — mesmo padrão de `(docs)`
+- [x] `src/components/marketing/footer.tsx` atualizado — 5 links institucionais (Privacidade, Termos de Uso, Cookies, LGPD, Exclusão de Dados) + Contato
+- [x] Metadata completa por página: `title`, `description`, `keywords`, `alternates.canonical`, Open Graph, Twitter Cards, `robots: index/follow`
+- [x] JSON-LD Schema.org inline em cada página: `WebPage` + `BreadcrumbList`
+- [x] Lint corrigido: 6 erros `react/no-unescaped-entities` (aspas tipográficas `&ldquo;`/`&rdquo;`)
+- [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros), `npm run build` (96/96 páginas, 5 novas estáticas `○`), `npm run validate:agenda` (65/65 testes Playwright mantidos)
+- [x] Validado em produção: todas as 5 URLs respondendo 200, layout correto (MarketingNav + breadcrumb + conteúdo + footer com links institucionais)
+- [x] E-mail de contato unificado em `contato@wavon.com.br` em todas as 5 páginas (suporte, LGPD, exclusão de dados, privacidade, contato institucional) — commit `bad7568`
+
+## Fase 9.1.2 — Reorganização dos Conectores WhatsApp (30/06/2026)
+✅ Concluída e validada em produção (commit `b343bf3`) — deploy `wavon-oo3l7e9gn`
+
+- [x] Configurações → WhatsApp reorganizado em **3 cards independentes** com badges numerados (1, 2, 3)
+- [x] **Método 1 — WhatsApp QR Code / Evolution API**: reutiliza `ChannelConnectionsPanel` existente (QR code, status por conexão, polling, "Gerar QR", desconectar)
+- [x] **Método 2 — API Oficial Manual / Meta Cloud API**: form completo (Phone Number ID, WABA ID, Access Token mascarado, Verify Token, PIN 2FA) + status banners (credenciais + registro) + URL do webhook + botões Salvar/Testar/Redefinir + accordion de instruções na coluna direita
+- [x] **Método 3 — Meta Embedded Signup / Coexistência**: card isolado com botão "Conectar via Meta" + badge de status quando conectado
+- [x] Nenhuma alteração de banco, providers, lógica ou handlers — reorganização puramente visual
+- [x] Providers preservados: `EVOLUTION`, `META`, `SITE_WIDGET`, `META_EMBEDDED`, `MANUAL`
+- [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros, 17 warnings pré-existentes), `npm run build` (limpo), 65/65 testes Playwright
+- [x] Validado em produção: 3 seções visíveis e distintas, QR_CODE/Evolution e META_API listados no Card 1, form Meta Cloud API no Card 2, botão Embedded Signup no Card 3
+
+## Fase 9.1.3 — UX da Central de Conexões WhatsApp (30/06/2026)
+✅ Concluída e validada em produção (commit `cbf18b0`) — deploy `dpl_G3BxddmrP9Ewp1KqHyDBHg12arE5`
+
+- [x] Tela renomeada para **"Central de Conexões WhatsApp"** — padrão visual dos demais módulos
+- [x] **Status strip** no topo: Evolution (🟢/🔴) | API Oficial (🟢/⚪) | Meta Coexistência (🟢/🟡/⚪) — atualiza na carga da página
+- [x] **3 abas horizontais** (`@base-ui/react/tabs`): `API Oficial` (padrão) | `QR Code / Evolution` | `Meta Coexistência`
+- [x] **Aba API Oficial**: descrição explicativa + status banners + form completo (5 campos) + webhook URL + botões + accordion de instruções à direita — tudo preservado, sem alterar lógica
+- [x] **Aba QR Code / Evolution**: mostra **somente conexões `QR_CODE`** (Evolution) via prop `filterTypes={['QR_CODE']}` no `ChannelConnectionsPanel` — META_API, SITE_WIDGET, META_EMBEDDED excluídos da listagem; "Gerar QR"/"Reconectar" contextuais; estado vazio com mensagem orientativa
+- [x] **Aba Meta Coexistência**: simplificada — quando configurado mostra dl com Telefone/WABA/Empresa/Última sincronização; quando não configurado mostra 3 etapas resumidas + botão "Conectar via Meta"
+- [x] Validação WABA ID: rejeita e-mail no campo (toast de erro + bloqueio no `handleSave`)
+- [x] Placeholders melhorados em todos os campos da API Oficial (IDs numéricos, formato EAA..., wavon_verify_2024)
+- [x] `ChannelConnectionsPanel` ganhou prop `filterTypes?: string[]` e exibe `phone_number` + `updated_at` nas linhas; título/descrição contextuais quando filtrado; botão "Reconectar" para status `disconnected`; estado vazio descritivo
+- [x] Nenhuma alteração de banco, APIs, providers, webhooks, Embedded Signup, Evolution ou Meta Cloud API
+- [x] `npm run typecheck` (0 erros), `npm run lint` (0 erros, 17 warnings pré-existentes), `npm run build` (limpo), 65/65 testes Playwright
+- [x] Validado em produção: título, status strip (Evolution: Desconectado | API Oficial: Não configurada | Meta Coexistência: Não configurada), 3 abas, form e instruções corretos na aba ativa
+
 ## Status geral (30/06/2026)
-Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `040` aplicadas. Migration `041` criada, aguardando aplicação manual.
+Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `041` aplicadas.
 
 Funcionalidades ativas:
 - ✅ CRM (Contatos, Pipeline/Negociações, Automações)
@@ -310,7 +356,8 @@ Funcionalidades ativas:
 - ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
 - ✅ Analytics Inteligente (/analytics — 6 abas, filtros globais, exportação CSV)
 - ✅ **65/65 testes Playwright passando em produção**
-- ⏳ **Meta Embedded Signup (Fase 9.1)**: código deployado, aguardando Config ID Meta + migration `041`
+- ✅ **Páginas institucionais / LGPD** (/politica-de-privacidade, /termos-de-uso, /exclusao-de-dados, /cookies, /lgpd) — Schema.org JSON-LD, SEO completo
+- ⏳ **Meta Embedded Signup (Fase 9.1)**: código deployado, migration `041` aplicada, aguardando Config ID Meta + env vars Vercel
 
 ## Próxima fase
 A definir (após conclusão das pendências manuais da Fase 9.1).
