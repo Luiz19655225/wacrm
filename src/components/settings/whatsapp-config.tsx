@@ -36,22 +36,35 @@ import type { WhatsAppConfig as WhatsAppConfigType, AccountConnection } from '@/
 
 const TAB_TRIGGER_CLASS = 'data-active:bg-muted data-active:text-primary text-muted-foreground';
 
-function StatusDot({ label, value, color }: {
+function StatusCard({ label, status, color }: {
   label: string;
-  value: string;
+  status: string;
   color: 'green' | 'red' | 'yellow' | 'gray';
 }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs">
-      <span className={cn('size-2 rounded-full', {
+    <div className={cn(
+      'flex items-center gap-2 rounded-md border px-3 py-2',
+      color === 'green' && 'border-emerald-700/50 bg-emerald-950/20',
+      color === 'red' && 'border-red-700/50 bg-red-950/20',
+      color === 'yellow' && 'border-amber-700/50 bg-amber-950/20',
+      color === 'gray' && 'border-border bg-muted/20',
+    )}>
+      <span className={cn('size-2 rounded-full shrink-0', {
         'bg-emerald-400': color === 'green',
         'bg-red-400': color === 'red',
         'bg-amber-400': color === 'yellow',
         'bg-muted-foreground/40': color === 'gray',
       })} />
-      <span className="text-muted-foreground">{label}:</span>
-      <span className="font-medium text-foreground">{value}</span>
-    </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground leading-none mb-0.5">{label}</p>
+        <p className={cn('text-xs font-semibold leading-none', {
+          'text-emerald-400': color === 'green',
+          'text-red-400': color === 'red',
+          'text-amber-400': color === 'yellow',
+          'text-muted-foreground': color === 'gray',
+        })}>{status}</p>
+      </div>
+    </div>
   );
 }
 
@@ -596,6 +609,16 @@ export function WhatsAppConfig() {
   const metaEmbeddedStatus = config?.provider === 'META_EMBEDDED'
     ? (connectionStatus === 'connected' ? 'connected' : 'pending')
     : 'not_configured';
+  const wabaIdHasEmail = wabaId.includes('@');
+  const webhookStatus = !config
+    ? 'pending'
+    : isRegistered && connectionStatus === 'connected'
+    ? 'verified'
+    : 'not_verified';
+  const metaEnvConfigured = Boolean(
+    process.env.NEXT_PUBLIC_META_APP_ID &&
+    process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID,
+  );
 
   return (
     <section className="animate-in fade-in-50 duration-200">
@@ -604,36 +627,38 @@ export function WhatsAppConfig() {
         description="Gerencie os métodos de conexão do WhatsApp Business da sua empresa."
       />
 
-      {/* ── Status Strip ── */}
-      <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-muted/30 px-4 py-3">
-        <span className="text-xs font-medium text-muted-foreground">Status geral</span>
-        <StatusDot
-          label="Evolution"
-          value={evolutionConnected ? 'Conectado' : 'Desconectado'}
-          color={evolutionConnected ? 'green' : 'red'}
-        />
-        <StatusDot
-          label="API Oficial"
-          value={connectionStatus === 'connected' ? 'Configurada' : 'Não configurada'}
-          color={connectionStatus === 'connected' ? 'green' : 'gray'}
-        />
-        <StatusDot
-          label="Meta Coexistência"
-          value={
-            metaEmbeddedStatus === 'connected'
-              ? 'Conectada'
-              : metaEmbeddedStatus === 'pending'
-              ? 'Configuração pendente'
-              : 'Não configurada'
-          }
-          color={
-            metaEmbeddedStatus === 'connected'
-              ? 'green'
-              : metaEmbeddedStatus === 'pending'
-              ? 'yellow'
-              : 'gray'
-          }
-        />
+      {/* ── Status Geral ── */}
+      <div className="mb-6 space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">Status geral</p>
+        <div className="flex flex-wrap gap-2">
+          <StatusCard
+            label="Evolution"
+            status={evolutionConnected ? 'Conectado' : 'Desconectado'}
+            color={evolutionConnected ? 'green' : 'red'}
+          />
+          <StatusCard
+            label="API Oficial"
+            status={connectionStatus === 'connected' ? 'Configurada' : config ? 'Não conectada' : 'Não configurada'}
+            color={connectionStatus === 'connected' ? 'green' : config ? 'yellow' : 'gray'}
+          />
+          <StatusCard
+            label="Meta Coexistência"
+            status={
+              metaEmbeddedStatus === 'connected'
+                ? 'Conectada'
+                : metaEmbeddedStatus === 'pending'
+                ? 'Config. pendente'
+                : 'Não configurada'
+            }
+            color={
+              metaEmbeddedStatus === 'connected'
+                ? 'green'
+                : metaEmbeddedStatus === 'pending'
+                ? 'yellow'
+                : 'gray'
+            }
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="api-oficial">
@@ -840,14 +865,27 @@ export function WhatsAppConfig() {
                   <div className="space-y-2">
                     <Label className="text-muted-foreground">WhatsApp Business Account ID (WABA)</Label>
                     <Input
-                      placeholder="ID numérico da conta WABA, ex: 123456789012345"
+                      placeholder="Ex: 123456789012345"
                       value={wabaId}
-                      onChange={(e) => setWabaId(e.target.value)}
-                      className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                      inputMode="numeric"
+                      onChange={(e) => setWabaId(e.target.value.replace(/\D/g, ''))}
+                      className={cn(
+                        'bg-muted border-border text-foreground placeholder:text-muted-foreground',
+                        wabaIdHasEmail && 'border-red-500',
+                      )}
                     />
                     <p className="text-xs text-muted-foreground">
-                      ID numérico — não é um e-mail. Localizado em Meta Business Suite → Contas do WhatsApp.
+                      ID numérico da sua WABA. Não é e-mail.
                     </p>
+                    {wabaIdHasEmail && (
+                      <Alert className="border-red-700/50 bg-red-950/20 py-2">
+                        <AlertTriangle className="size-3.5 text-red-400" />
+                        <AlertTitle className="text-red-300 text-xs mb-0.5">WABA ID inválido</AlertTitle>
+                        <AlertDescription className="text-muted-foreground text-xs">
+                          O campo contém um e-mail, mas precisa ser o ID numérico da sua conta WABA. Localize-o em Meta Business Suite → Contas do WhatsApp.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -937,10 +975,25 @@ export function WhatsAppConfig() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-foreground">Configuração do webhook</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Use esta URL como callback de webhook no painel do app da Meta.
-                  </CardDescription>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-foreground">Configuração do webhook</CardTitle>
+                      <CardDescription className="text-muted-foreground">
+                        Use esta URL como callback de webhook no painel do app da Meta.
+                      </CardDescription>
+                    </div>
+                    <span className={cn(
+                      'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+                      webhookStatus === 'verified' && 'border-emerald-700/50 bg-emerald-950/20 text-emerald-400',
+                      webhookStatus === 'not_verified' && 'border-amber-700/50 bg-amber-950/20 text-amber-400',
+                      webhookStatus === 'pending' && 'border-border bg-muted/20 text-muted-foreground',
+                    )}>
+                      {webhookStatus === 'verified' && <CheckCircle2 className="size-3" />}
+                      {webhookStatus === 'not_verified' && <AlertTriangle className="size-3" />}
+                      {webhookStatus === 'pending' && <span className="size-1.5 rounded-full bg-muted-foreground/50" />}
+                      {webhookStatus === 'verified' ? 'Verificado' : webhookStatus === 'not_verified' ? 'Não verificado' : 'Pendente'}
+                    </span>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -967,7 +1020,7 @@ export function WhatsAppConfig() {
               <div className="flex flex-wrap gap-3">
                 <Button
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || wabaIdHasEmail}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   {saving ? (
@@ -1128,6 +1181,11 @@ export function WhatsAppConfig() {
 
         {/* ── ABA 3: Meta Coexistência ── */}
         <TabsContent value="meta" className="mt-6">
+          <div className="mb-5">
+            <p className="text-sm text-muted-foreground">
+              Conecte sua conta Meta Business diretamente, sem precisar copiar credenciais. Esta opção coexiste com a Evolution API — as duas podem estar ativas ao mesmo tempo.
+            </p>
+          </div>
           <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
               <CardTitle className="text-foreground flex items-center gap-2 text-base">
@@ -1139,6 +1197,18 @@ export function WhatsAppConfig() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!metaEnvConfigured && (
+                <Alert className="border-amber-700/50 bg-amber-950/20">
+                  <AlertTriangle className="size-4 text-amber-400" />
+                  <AlertTitle className="text-amber-300 text-sm">Configuração pendente</AlertTitle>
+                  <AlertDescription className="text-muted-foreground text-xs">
+                    Adicione <code className="rounded bg-muted px-1 py-0.5">NEXT_PUBLIC_META_APP_ID</code> e{' '}
+                    <code className="rounded bg-muted px-1 py-0.5">NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID</code>{' '}
+                    no Vercel e faça um novo deploy para ativar esta funcionalidade.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {metaEmbeddedStatus !== 'not_configured' ? (
                 <>
                   <Alert className="bg-emerald-950/30 border-emerald-700/50">
@@ -1154,12 +1224,19 @@ export function WhatsAppConfig() {
                   </Alert>
 
                   <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+                    <dt className="text-muted-foreground">Empresa (Portfolio ID)</dt>
+                    <dd className="text-foreground">{config?.organization_id || '—'}</dd>
                     <dt className="text-muted-foreground">Telefone conectado</dt>
                     <dd className="font-mono text-foreground">{config?.phone_number_id || '—'}</dd>
                     <dt className="text-muted-foreground">WABA</dt>
                     <dd className="font-mono text-foreground">{config?.waba_id || '—'}</dd>
-                    <dt className="text-muted-foreground">Empresa (Portfolio ID)</dt>
-                    <dd className="text-foreground">{config?.organization_id || '—'}</dd>
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd className={cn(
+                      'font-medium',
+                      metaEmbeddedStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400',
+                    )}>
+                      {metaEmbeddedStatus === 'connected' ? 'Conectado' : 'Configuração pendente'}
+                    </dd>
                     <dt className="text-muted-foreground">Última sincronização</dt>
                     <dd className="text-foreground">
                       {config?.subscribed_apps_at
@@ -1194,8 +1271,8 @@ export function WhatsAppConfig() {
 
               <Button
                 onClick={handleEmbeddedSignup}
-                disabled={embeddedSignupLoading}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={embeddedSignupLoading || !metaEnvConfigured}
+                className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
               >
                 {embeddedSignupLoading ? (
                   <>

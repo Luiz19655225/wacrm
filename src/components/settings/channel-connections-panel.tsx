@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plug, QrCode, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -194,18 +194,24 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
         ) : (
           displayedConnections.map((conn) => {
             const qrcodeBase64 = conn.metadata?.qrcode_base64 as string | undefined;
+            const displayLabel = conn.label
+              ? conn.label
+              : conn.connection_type === "QR_CODE"
+              ? "Conexão Evolution"
+              : conn.connection_type;
+            const providerLabel = conn.provider === "EVOLUTION"
+              ? "Evolution API"
+              : conn.provider ?? "";
             return (
               <div key={conn.id} className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium text-foreground">
-                      {conn.label ?? conn.connection_type}
+                      {displayLabel}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {conn.provider}
+                      {providerLabel}
                       {conn.phone_number ? ` · ${conn.phone_number}` : ""}
-                      {" · "}
-                      {statusLabel(conn.connection_status)}
                     </p>
                     {conn.updated_at && (
                       <p className="text-xs text-muted-foreground/60">
@@ -214,7 +220,16 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{statusLabel(conn.connection_status)}</Badge>
+                    <span className={cn(
+                      "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium",
+                      conn.connection_status === "connected" && "border-emerald-700/50 bg-emerald-950/30 text-emerald-400",
+                      conn.connection_status === "disconnected" && "border-red-700/50 bg-red-950/30 text-red-400",
+                      conn.connection_status === "qrcode_ready" && "border-blue-700/50 bg-blue-950/30 text-blue-400",
+                      conn.connection_status === "error" && "border-red-700/50 bg-red-950/30 text-red-400",
+                      conn.connection_status === "pending" && "border-border bg-muted text-muted-foreground",
+                    )}>
+                      {statusLabel(conn.connection_status)}
+                    </span>
                     {canEditSettings &&
                       conn.connection_type === "QR_CODE" &&
                       conn.connection_status !== "connected" && (
