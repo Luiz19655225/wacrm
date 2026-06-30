@@ -241,8 +241,33 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 - [x] `src/lib/analytics/date-range.ts` — utilitário compartilhado de séries de datas
 - [x] Testes Playwright 52–58 adicionados — **58/58 passando em produção**
 
-## Status geral (28/06/2026)
-Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas.
+## Fase 8.6.1 — Hardening de dados e timezone
+✅ Concluída e validada em produção (commit `e8bd0b2`) — deploy `dpl_FZM3JareWrRju61U4vyxHASv4z4E`
+
+- [x] `analytics-filters.tsx`: `toStr()` passou a usar `getFullYear/getMonth/getDate` (hora local) em vez de `toISOString()` (UTC) — corrige preset "Hoje" que resolvia para amanhã depois das 21h no Brasil (UTC-3)
+- [x] 6 rotas de analytics: adicionado `.limit(10000)` em queries que precisam de linhas; queries de contagem usam `{ count: 'exact', head: true }` + `.count` (conversas em comunicacao, novos contatos em clientes)
+- [x] 58/58 testes Playwright mantidos
+
+## Fase 9.0 — WAVI Copilot (30/06/2026)
+✅ Concluída e validada em produção (commit `26dae15`) — deploy `dpl_AsJuqccBvEyR3Qom4aEdUmqdrzFy`
+
+- [x] WAVI-ROADMAP.md: Seções 18 (Plugin System), 19 (Integrações e MCPs) e 20 (Arquitetura Multi-LLM) adicionadas
+- [x] `getConversationInsights()` em `src/lib/ai/inbox-assistant.ts` — score 0–100, intenção, próxima ação, alertas, sentimento, sugestão de estágio, detecção de risco (tudo em **uma única chamada IA**)
+- [x] `GET /api/ai/inbox/insights` — retorna insights completos para o atendente, com auth, 400/401/404/422 cobrertos
+- [x] `src/components/inbox/wavi-insights-panel.tsx` — painel colapsável no sidebar do Inbox: score colorido (Frio=azul, Morno=âmbar, Quente=laranja, Cliente=verde, Perdido=zinc), sentimento badge, próxima ação destacada, alertas, sugestão de estágio, banner de risco
+- [x] `contact-sidebar.tsx` — `conversationId` passado como prop; `WaviInsightsPanel` renderizado acima do ScrollArea
+- [x] `inbox/page.tsx` — passa `conversationId={activeConversation?.id ?? null}` ao `ContactSidebar`
+- [x] Auto-resumo automático em `message-thread.tsx` — banner colapsável "Resumo da WAVI" aparece automaticamente para conversas > 20 mensagens (useRef impede re-disparo)
+- [x] `AiFeature` ampliado: `| 'wavi_insights'` adicionado em `ai-settings.ts`
+- [x] Migration `040_wavi_copilot.sql` criada (DROP + ADD `ai_usage_logs_feature_check`) — **APLICAR MANUALMENTE no SQL Editor do Supabase**
+- [x] Testes Playwright 59–65 adicionados — **65/65 passando em produção**
+- [x] Validado em produção: painel WAVI Insights carregou com Score "Frio · 10/100", intenção e sentimento corretos; banner de auto-resumo visível em conversa com muitas mensagens
+
+Pendência obrigatória:
+- [ ] **Aplicar `040_wavi_copilot.sql` no SQL Editor do Supabase** — sem isso o log de `ai_usage_logs` com `feature='wavi_insights'` falha silenciosamente (endpoint funciona, mas uso não é rastreado)
+
+## Status geral (30/06/2026)
+Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas. Migration `040` criada, aguardando aplicação manual.
 
 Funcionalidades ativas:
 - ✅ CRM (Contatos, Pipeline/Negociações, Automações)
@@ -250,6 +275,7 @@ Funcionalidades ativas:
 - ✅ Respostas rápidas ("/atalho" no composer)
 - ✅ IA via OpenAI (Responses API, chave própria por conta, criptografada)
 - ✅ Assistente IA no Inbox: sugerir resposta, resumir, classificar lead
+- ✅ **WAVI Copilot no Inbox**: score de lead (0–100), intenção, sentimento, próxima ação, alertas, detecção de risco — painel colapsável no sidebar + auto-resumo para conversas longas
 - ✅ Base de Conhecimento: Perfil, Produtos, FAQ, Objetivos, Regras, Documentos (RAG)
 - ✅ Widget IA no site público (atendente WAVI + agendamento inteligente)
 - ✅ Agenda nativa: calendário mensal, sincronização Google Calendar (multi-calendário), filtros, criação de compromissos, ações de status, comunicação inteligente, histórico de comunicação
@@ -258,11 +284,13 @@ Funcionalidades ativas:
 - ✅ Observabilidade e Monitoramento (/observabilidade — Agenda, Comunicação, Integrações)
 - ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
 - ✅ Analytics Inteligente (/analytics — 6 abas, filtros globais, exportação CSV)
-- ✅ **58/58 testes Playwright passando em produção**
+- ✅ **65/65 testes Playwright passando em produção**
 
 ## Próxima fase
+A definir.
 
 Pendências não-bloqueantes:
+- **Aplicar `040_wavi_copilot.sql`** no SQL Editor do Supabase (rastreamento de uso do WAVI Insights).
 - Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`).
 - Logs temporários em `evolution-webhook-processor.ts` (`// TEMP DIAGNOSTIC LOG`) — remover quando estável.

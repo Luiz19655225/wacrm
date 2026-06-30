@@ -663,6 +663,44 @@ Cada tab usa `useCallback(async ...)` + `void load(from, to)` no efeito — padr
 - E-mail em Comunicação → canal não implementado
 - WAVI (atendente autônomo) em IA → módulo independente planejado para fases futuras
 
+## Fase 9.0 — WAVI Copilot (30/06/2026) — ✅ CONCLUÍDA e validada em produção
+Commit `26dae15`. Deploy `dpl_AsJuqccBvEyR3Qom4aEdUmqdrzFy`. **65/65 testes Playwright.**
+
+Camada assistiva de IA no Inbox. O WAVI **nunca executa ações críticas automaticamente** — toda decisão permanece sob aprovação do atendente humano.
+
+### Antes da Fase 9.0: adições ao WAVI-ROADMAP.md
+- **Seção 18** — Sistema de Skills (Plugin System): tabelas `wavi_skills`/`account_skills`, 10 skills planejadas (clínica, jurídico, contabilidade, imobiliária, academia, seguros, abracred, nabzon, ecommerce, saas), RAG por skill, memory e permissions por skill em JSON, Marketplace planejado para Fase 10.5
+- **Seção 19** — Arquitetura de Integrações e MCPs: interface `IntegrationAdapter<TConfig,TRequest,TResponse>`, retry com exponential backoff, timeouts por integração (Supabase=5s, Evolution=8s, Google=10s, OpenAI=30s), SlidingWindowRateLimiter, `integration_request_logs`, mapa completo das 14 integrações
+- **Seção 20** — Arquitetura Multi-LLM: `ModelRouterRequest/Response`, `ModelTask` union type, task-to-model table, cascade fallback, `LlmCacheEntry`, tabela de custos (Junho 2026), roadmap de implementação por fase (9.0→11.0)
+
+### WAVI Insights — `src/lib/ai/inbox-assistant.ts`
+`getConversationInsights(args: AssistantArgs): Promise<AssistantResult<ConversationInsights>>` — uma única chamada IA retorna:
+- `intent: string` — intenção detectada da conversa
+- `score: number` (0–100) + `scoreLabel: InsightScoreLabel` ('Frio' | 'Morno' | 'Quente' | 'Cliente' | 'Perdido' | 'Indefinido')
+- `nextAction: string` — próxima ação sugerida
+- `alerts: string[]` — alertas detectados
+- `sentiment: InsightSentiment` ('Positivo' | 'Neutro' | 'Negativo')
+- `stageSuggestion: string | null` — sugestão de mudança de estágio
+- `atRisk: boolean` + `riskReason: string | null`
+
+Loga em `ai_usage_logs` com `feature: 'wavi_insights'`. Retorna objeto padrão vazio quando não há mensagens (sem chamar a IA).
+
+### Novos arquivos
+- `src/app/api/ai/inbox/insights/route.ts` — GET com `conversation_id` query param; 400/401/404/422
+- `src/components/inbox/wavi-insights-panel.tsx` — painel colapsável; score colorido (SCORE_COLORS por label), sentimento badge, próxima ação em destaque, alertas, sugestão de estágio, banner de risco; AbortController via useRef; loading skeleton; silencioso em 422
+- `supabase/migrations/040_wavi_copilot.sql` — DROP + ADD CHECK de `ai_usage_logs_feature_check` para incluir `'wavi_insights'` — **APLICAR MANUALMENTE no SQL Editor do Supabase**
+
+### Arquivos modificados
+- `contact-sidebar.tsx` — prop `conversationId?: string | null`; `WaviInsightsPanel` acima do ScrollArea
+- `inbox/page.tsx` — passa `conversationId={activeConversation?.id ?? null}` ao ContactSidebar
+- `message-thread.tsx` — auto-resumo automático para conversas > 20 mensagens (banner colapsável, `useRef` impede re-disparo)
+- `ai-settings.ts` — `AiFeature` ampliado: `| 'wavi_insights'`
+
+### Validação em produção
+Inbox → conversa "Caçador De Liquidação" → painel WAVI INSIGHTS carregou com Score "Frio · 10/100", intenção "Oportunidade de venda de produtos em liquidação", sentimento "Negativo", próxima ação "Ignorar ou avaliar mensagens indesejadas". Banner de Resumo da WAVI visível e expandido com pontos principais e próxima ação sugerida.
+
+**Pendência**: aplicar `040_wavi_copilot.sql` no SQL Editor do Supabase para que o `ai_usage_logs` registre corretamente o uso do `wavi_insights`. O endpoint funciona sem a migration, mas o log falha silenciosamente (best-effort por design).
+
 ## Próxima fase planejada
 A definir.
 
