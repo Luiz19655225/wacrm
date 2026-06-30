@@ -57,7 +57,7 @@ export interface ChannelConnectResult {
  * src/lib/whatsapp/encryption.ts).
  */
 export interface ChannelAdapter {
-  readonly provider: 'META' | 'EVOLUTION';
+  readonly provider: 'META' | 'EVOLUTION' | 'META_EMBEDDED';
 
   /**
    * Start (or resume) the provider-side pairing flow for a connection

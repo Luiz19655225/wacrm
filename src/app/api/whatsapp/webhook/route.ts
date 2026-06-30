@@ -230,8 +230,39 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
 
       if (!configRows || configRows.length === 0) {
-        console.error('No config found for phone_number_id:', phoneNumberId)
-        continue
+        // Fallback: look for a META_EMBEDDED connection in account_connections.
+        // This handles the case where the Embedded Signup exchange wrote to
+        // account_connections but the whatsapp_config mirror failed.
+        const { data: embeddedConn } = await supabaseAdmin()
+          .from('account_connections')
+          .select('account_id')
+          .eq('meta_phone_number_id', phoneNumberId)
+          .eq('provider', 'META_EMBEDDED')
+          .eq('connection_status', 'connected')
+          .maybeSingle()
+
+        if (!embeddedConn) {
+          console.error('No config found for phone_number_id:', phoneNumberId)
+          continue
+        }
+
+        // Found via account_connections — look up whatsapp_config for that account.
+        const { data: fallbackConfig } = await supabaseAdmin()
+          .from('whatsapp_config')
+          .select('*')
+          .eq('account_id', embeddedConn.account_id)
+          .maybeSingle()
+
+        if (!fallbackConfig) {
+          console.error(
+            '[webhook] META_EMBEDDED connection found but no whatsapp_config for account:',
+            embeddedConn.account_id
+          )
+          continue
+        }
+
+        // Push a synthetic row so the existing path below works unchanged.
+        configRows.push({ ...fallbackConfig, phone_number_id: phoneNumberId })
       }
 
       if (configRows.length > 1) {

@@ -273,6 +273,12 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+  /** How this config was created: 'manual' (form) or 'meta_embedded' (OAuth). */
+  provider?: 'manual' | 'meta_embedded';
+  /** True when both manual and embedded signup connections coexist for this account. */
+  coexistence_enabled?: boolean;
+  /** Meta Business Portfolio ID — set by Embedded Signup, null for manual. */
+  organization_id?: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)
@@ -677,8 +683,8 @@ export interface BillingEvent {
   created_at: string;
 }
 
-export type ChannelConnectionType = 'QR_CODE' | 'META_API';
-export type ChannelProvider = 'EVOLUTION' | 'META';
+export type ChannelConnectionType = 'QR_CODE' | 'META_API' | 'META_EMBEDDED';
+export type ChannelProvider = 'EVOLUTION' | 'META' | 'META_EMBEDDED';
 export type ChannelConnectionStatus =
   | 'pending'
   | 'qrcode_ready'

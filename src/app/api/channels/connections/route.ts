@@ -25,6 +25,7 @@ import type { ChannelConnectionType, ChannelProvider } from "@/types";
 const TYPE_PROVIDER_PAIRS: Record<ChannelConnectionType, ChannelProvider> = {
   QR_CODE: "EVOLUTION",
   META_API: "META",
+  META_EMBEDDED: "META_EMBEDDED",
 };
 
 const CONNECTION_FIELDS =

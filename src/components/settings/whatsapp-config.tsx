@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Eye,
@@ -13,6 +13,7 @@ import {
   Zap,
   AlertTriangle,
   RotateCcw,
+  Link2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -34,6 +35,64 @@ const MASKED_TOKEN = '••••••••••••••••';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
+
+// ── Facebook SDK helpers ──────────────────────────────────────────
+
+interface FbAuthResponse {
+  code?: string;
+  accessToken?: string;
+  userID?: string;
+  expiresIn?: number;
+  signedRequest?: string;
+}
+
+interface FbLoginResponse {
+  authResponse?: FbAuthResponse;
+  status: string;
+}
+
+type FbLoginCallback = (response: FbLoginResponse) => void;
+
+interface FbLoginOptions {
+  config_id?: string;
+  response_type?: string;
+  override_default_response_type?: boolean;
+  extras?: Record<string, unknown>;
+}
+
+declare global {
+  interface Window {
+    FB?: {
+      init(opts: Record<string, unknown>): void;
+      login(cb: FbLoginCallback, opts: FbLoginOptions): void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
+
+function loadFbSdk(appId: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') { resolve(); return; }
+    if (window.FB) { resolve(); return; }
+    window.fbAsyncInit = function () {
+      window.FB!.init({
+        appId,
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: 'v21.0',
+      });
+      resolve();
+    };
+    if (!document.getElementById('fb-sdk')) {
+      const script = document.createElement('script');
+      script.id = 'fb-sdk';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  });
+}
 
 export function WhatsAppConfig() {
   const supabase = createClient();
@@ -60,6 +119,9 @@ export function WhatsAppConfig() {
   const [verifyToken, setVerifyToken] = useState('');
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
+
+  const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
+  const wabaInfoRef = useRef<{ waba_id: string; phone_number_id?: string } | null>(null);
 
   // True once /register has succeeded on Meta's side (timestamp set
   // in the row). When false, the saved config is metadata-only and
@@ -359,6 +421,118 @@ export function WhatsAppConfig() {
     toast.success('URL do webhook copiada');
   }
 
+  async function handleEmbeddedSignup() {
+    const appId = process.env.NEXT_PUBLIC_META_APP_ID;
+    const configId = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
+
+    if (!appId || !configId) {
+      toast.error(
+        'Meta Embedded Signup não está configurado neste ambiente. Contate o administrador.',
+        { duration: 6000 },
+      );
+      return;
+    }
+
+    setEmbeddedSignupLoading(true);
+    wabaInfoRef.current = null;
+
+    try {
+      await loadFbSdk(appId);
+    } catch {
+      toast.error('Não foi possível carregar o SDK da Meta. Verifique sua conexão.');
+      setEmbeddedSignupLoading(false);
+      return;
+    }
+
+    // Listen for FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING to capture
+    // waba_id and phone_number_id from the Embedded Signup flow.
+    const messageHandler = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.facebook.com') return;
+      try {
+        const msg = JSON.parse(event.data as string) as {
+          type?: string;
+          event?: string;
+          data?: { waba_id?: string; phone_number_id?: string };
+        };
+        if (
+          msg.type === 'WA_EMBEDDED_SIGNUP' &&
+          msg.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
+        ) {
+          wabaInfoRef.current = {
+            waba_id: msg.data?.waba_id ?? '',
+            phone_number_id: msg.data?.phone_number_id,
+          };
+        }
+      } catch {
+        // message was not JSON — ignore
+      }
+    };
+    window.addEventListener('message', messageHandler);
+
+    window.FB!.login(
+      async (response) => {
+        window.removeEventListener('message', messageHandler);
+
+        if (!response.authResponse?.code) {
+          // User cancelled or an error occurred — not an error on our side.
+          setEmbeddedSignupLoading(false);
+          return;
+        }
+
+        const code = response.authResponse.code;
+        const wabaInfo = wabaInfoRef.current;
+
+        if (!wabaInfo?.waba_id) {
+          toast.error(
+            'Não foi possível obter o WABA ID do Meta. Tente novamente ou use a integração manual.',
+            { duration: 8000 },
+          );
+          setEmbeddedSignupLoading(false);
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/whatsapp/embedded-signup/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              waba_id: wabaInfo.waba_id,
+              phone_number_id: wabaInfo.phone_number_id,
+            }),
+          });
+
+          const data = (await res.json()) as {
+            success?: boolean;
+            error?: string;
+            phone_number_id?: string;
+          };
+
+          if (!res.ok) {
+            toast.error(data.error ?? 'Falha ao conectar via Meta Embedded Signup');
+            return;
+          }
+
+          toast.success('WhatsApp conectado via Meta Embedded Signup!');
+          if (accountId) await fetchConfig(accountId);
+        } catch {
+          toast.error('Falha ao finalizar a conexão. Tente novamente.');
+        } finally {
+          setEmbeddedSignupLoading(false);
+        }
+      },
+      {
+        config_id: configId,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          sessionInfoVersion: 3,
+          featureType: 'whatsapp_business_app_onboarding',
+        },
+      },
+    );
+  }
+
   if (loading) {
     return (
       <section className="animate-in fade-in-50 duration-200">
@@ -546,6 +720,60 @@ export function WhatsAppConfig() {
             )}
           </Alert>
         )}
+
+        {/* Meta Embedded Signup — second connection method */}
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-foreground flex items-center gap-2 text-base">
+              <Link2 className="size-4 text-primary" />
+              Conectar via Meta (Embedded Signup)
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Autorize o acesso diretamente na sua conta Meta Business sem precisar copiar credenciais manualmente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {config?.provider === 'meta_embedded' ? (
+              <Alert className="bg-emerald-950/30 border-emerald-700/50 mb-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="size-4 text-emerald-400" />
+                  <AlertTitle className="text-emerald-200 mb-0 text-sm">
+                    Conectado via Embedded Signup
+                  </AlertTitle>
+                </div>
+                <AlertDescription className="text-muted-foreground text-xs mt-1">
+                  Esta conta já está conectada via Meta Embedded Signup. Para reconectar, clique no botão abaixo.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <Button
+              onClick={handleEmbeddedSignup}
+              disabled={embeddedSignupLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {embeddedSignupLoading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Conectando...
+                </>
+              ) : (
+                <>
+                  <Link2 className="size-4" />
+                  {config?.provider === 'meta_embedded'
+                    ? 'Reconectar via Meta'
+                    : 'Conectar via Meta'}
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Divider */}
+        <div className="relative flex items-center gap-3">
+          <div className="flex-1 border-t border-border" />
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">ou integração manual</span>
+          <div className="flex-1 border-t border-border" />
+        </div>
 
         {/* API Credentials */}
         <Card>

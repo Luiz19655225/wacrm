@@ -1034,3 +1034,165 @@ export async function downloadMedia(
   const buffer = Buffer.from(await response.arrayBuffer())
   return { buffer, contentType }
 }
+
+// ============================================================
+// Meta Embedded Signup — OAuth + WABA bootstrap
+// ============================================================
+
+export interface ExchangeCodeForTokenArgs {
+  /** Short-lived authorization code from the Embedded Signup SDK. */
+  code: string
+}
+
+export interface ExchangeCodeForTokenResult {
+  accessToken: string
+  tokenType: string
+}
+
+/**
+ * Exchange the one-time authorization code from Meta Embedded Signup
+ * for a user access token. Must be called server-side — the appSecret
+ * must never reach the browser.
+ *
+ * Meta docs: https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived
+ */
+export async function exchangeCodeForToken(
+  args: ExchangeCodeForTokenArgs
+): Promise<ExchangeCodeForTokenResult> {
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) {
+    throw new Error('META_APP_ID and META_APP_SECRET are required for Embedded Signup token exchange')
+  }
+  const url = new URL(`${META_API_BASE}/oauth/access_token`)
+  url.searchParams.set('client_id', appId)
+  url.searchParams.set('client_secret', appSecret)
+  url.searchParams.set('code', args.code)
+  const response = await fetch(url.toString())
+  if (!response.ok) {
+    await throwMetaError(response, `Meta token exchange failed: ${response.status}`)
+  }
+  const data = (await response.json()) as { access_token: string; token_type: string }
+  return { accessToken: data.access_token, tokenType: data.token_type }
+}
+
+export interface GetPhoneNumbersArgs {
+  wabaId: string
+  accessToken: string
+}
+
+/**
+ * List the phone numbers registered under a WABA.
+ * Used after Embedded Signup to discover the phone_number_id without
+ * requiring the user to copy/paste it manually.
+ */
+export async function getPhoneNumbers(
+  args: GetPhoneNumbersArgs
+): Promise<MetaPhoneInfo[]> {
+  const { wabaId, accessToken } = args
+  const url = `${META_API_BASE}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta getPhoneNumbers failed: ${response.status}`)
+  }
+  const data = (await response.json()) as { data?: MetaPhoneInfo[] }
+  return data.data ?? []
+}
+
+export interface SubscribeWebhookFieldsArgs {
+  wabaId: string
+  accessToken: string
+  /** Webhook fields to subscribe. Defaults to the full embedded-signup set. */
+  fields?: string[]
+}
+
+/**
+ * Subscribe the current Meta App to WABA-level webhook events.
+ * Wraps subscribeWabaToApp with Embedded Signup's recommended field set
+ * (messages, history, smb_app_state_sync, smb_message_echoes, account_update).
+ * Fields are passed as a subscribed_fields parameter when supported.
+ */
+export async function subscribeWebhookFields(
+  args: SubscribeWebhookFieldsArgs
+): Promise<void> {
+  const { wabaId, accessToken, fields = [
+    'messages',
+    'history',
+    'smb_app_state_sync',
+    'smb_message_echoes',
+    'account_update',
+  ]} = args
+  const url = `${META_API_BASE}/${wabaId}/subscribed_apps`
+  const body = new URLSearchParams({ subscribed_fields: fields.join(',') })
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta subscribeWebhookFields failed: ${response.status}`)
+  }
+}
+
+export interface StartHistorySyncArgs {
+  phoneNumberId: string
+  accessToken: string
+}
+
+/**
+ * Request historical messages for a phone number.
+ * Meta delivers them as `messages` webhook events with `type=history`.
+ * This call initiates the sync — delivery is asynchronous via webhook.
+ */
+export async function startHistorySync(
+  args: StartHistorySyncArgs
+): Promise<void> {
+  const { phoneNumberId, accessToken } = args
+  const url = `${META_API_BASE}/${phoneNumberId}/sync`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp' }),
+  })
+  // 404 means the endpoint is not enabled for this phone number — not fatal.
+  if (!response.ok && response.status !== 404) {
+    await throwMetaError(response, `Meta startHistorySync failed: ${response.status}`)
+  }
+}
+
+export interface StartContactsSyncArgs {
+  phoneNumberId: string
+  accessToken: string
+}
+
+/**
+ * Trigger a contacts sync for the phone number.
+ * Meta delivers contacts via `contacts` webhook events.
+ * Async — returns immediately; contacts arrive via webhook.
+ */
+export async function startContactsSync(
+  args: StartContactsSyncArgs
+): Promise<void> {
+  const { phoneNumberId, accessToken } = args
+  const url = `${META_API_BASE}/${phoneNumberId}/contacts`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp', contacts: [] }),
+  })
+  // 404 or 400 means this endpoint is not applicable — treat as non-fatal.
+  if (!response.ok && response.status !== 404 && response.status !== 400) {
+    await throwMetaError(response, `Meta startContactsSync failed: ${response.status}`)
+  }
+}
