@@ -16,6 +16,7 @@ import type {
 import {
   MessageSquare,
   ChevronDown,
+  ChevronUp,
   UserPlus,
   Check,
   Clock,
@@ -220,6 +221,16 @@ export function MessageThread({
     | { type: "classify"; data: LeadClassificationResult }
     | null
   >(null);
+
+  // ---- Auto-summary for long conversations (Fase 9.0 WAVI Copilot) ---
+  // Fires once per conversation when messages.length > 20. The banner is
+  // collapsible so agents who already know the context can hide it.
+  const [autoSummary, setAutoSummary] = useState<ConversationSummary | null>(null);
+  const [autoSummaryLoading, setAutoSummaryLoading] = useState(false);
+  const [autoSummaryOpen, setAutoSummaryOpen] = useState(true);
+  // Tracks the conversation id for which auto-summary already ran so we
+  // don't re-fire on every resync or message append.
+  const autoSummaryConvRef = useRef<string | null>(null);
 
   // ---- Scheduling dialog --------------------------------------------------
   interface AvailableSlot { startISO: string; endISO: string; label: string }
@@ -476,6 +487,40 @@ export function MessageThread({
       el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
+
+  // Auto-summary for conversations with > 20 messages (Fase 9.0).
+  // Fires once per conversation — ref prevents re-fires on resync / new
+  // messages arriving while the thread is open.
+  useEffect(() => {
+    if (loading) return;
+    if (!conversationId) return;
+    if (messages.length <= 20) return;
+    if (autoSummaryConvRef.current === conversationId) return;
+
+    autoSummaryConvRef.current = conversationId;
+    setAutoSummary(null);
+    setAutoSummaryOpen(true);
+    setAutoSummaryLoading(true);
+
+    fetch("/api/ai/inbox/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    })
+      .then((res) => res.json())
+      .then((data: { summary?: ConversationSummary; error?: string }) => {
+        if (data.summary) setAutoSummary(data.summary);
+      })
+      .catch(() => { /* best-effort — never crash the Inbox */ })
+      .finally(() => setAutoSummaryLoading(false));
+  }, [conversationId, messages.length, loading]);
+
+  // Reset auto-summary when switching conversations
+  useEffect(() => {
+    setAutoSummary(null);
+    setAutoSummaryLoading(false);
+    setAutoSummaryOpen(true);
+  }, [conversationId]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -1250,6 +1295,52 @@ export function MessageThread({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Auto-summary banner — Fase 9.0 WAVI Copilot.
+          Only shown for long conversations (> 20 msgs). Collapsible. */}
+      {(autoSummaryLoading || autoSummary) && (
+        <div
+          data-testid="auto-summary-banner"
+          className="border-b border-border bg-primary/5"
+        >
+          <button
+            className="flex w-full items-center justify-between px-4 py-2 text-left"
+            onClick={() => setAutoSummaryOpen((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-medium text-primary">
+                {autoSummaryLoading ? "WAVI resumindo a conversa..." : "Resumo da WAVI"}
+              </span>
+            </div>
+            {autoSummary && (
+              autoSummaryOpen
+                ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+          </button>
+          {autoSummaryOpen && autoSummary && (
+            <div className="space-y-1.5 px-4 pb-3 text-xs text-muted-foreground">
+              {autoSummary.intent && (
+                <p><span className="font-medium text-foreground">Intenção:</span> {autoSummary.intent}</p>
+              )}
+              {autoSummary.keyPoints && (
+                <p><span className="font-medium text-foreground">Pontos principais:</span> {autoSummary.keyPoints}</p>
+              )}
+              {autoSummary.nextAction && (
+                <p><span className="font-medium text-primary">Próxima ação:</span> {autoSummary.nextAction}</p>
+              )}
+            </div>
+          )}
+          {autoSummaryLoading && (
+            <div className="px-4 pb-3 space-y-1.5">
+              {[80, 60, 70].map((w, i) => (
+                <div key={i} className="h-2.5 animate-pulse rounded bg-muted" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">

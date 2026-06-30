@@ -257,3 +257,147 @@ export async function classifyLead(
     return { ok: false, error: message }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fase 9.0 — WAVI Copilot: Insights completos de uma conversa em uma chamada
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type InsightSentiment = 'Positivo' | 'Neutro' | 'Negativo'
+export type InsightScoreLabel = 'Frio' | 'Morno' | 'Quente' | 'Cliente' | 'Perdido' | 'Indefinido'
+
+export interface ConversationInsights {
+  intent: string
+  score: number               // 0-100
+  scoreLabel: InsightScoreLabel
+  nextAction: string
+  alerts: string[]
+  sentiment: InsightSentiment
+  stageSuggestion: string | null
+  atRisk: boolean
+  riskReason: string | null
+}
+
+function scoreToLabel(score: number): InsightScoreLabel {
+  if (score <= 5) return 'Perdido'
+  if (score <= 30) return 'Frio'
+  if (score <= 60) return 'Morno'
+  if (score <= 85) return 'Quente'
+  return 'Cliente'
+}
+
+function parseInsights(raw: string): ConversationInsights {
+  const grab = (label: string): string => {
+    const re = new RegExp(`${label}\\s*:\\s*([^\\n]+)`, 'i')
+    return raw.match(re)?.[1]?.trim() ?? ''
+  }
+
+  const scoreStr = grab('Score')
+  const score = Math.min(100, Math.max(0, parseInt(scoreStr) || 50))
+
+  const alertsRaw = grab('Alertas')
+  const alerts = alertsRaw && alertsRaw.toLowerCase() !== 'nenhum'
+    ? alertsRaw.split('|').map((a) => a.trim()).filter(Boolean)
+    : []
+
+  const stageSuggestionRaw = grab('Sugest[aã]o de est[aá]gio')
+  const stageSuggestion = stageSuggestionRaw && stageSuggestionRaw.toLowerCase() !== 'nenhuma'
+    ? stageSuggestionRaw
+    : null
+
+  const atRiskRaw = grab('Em risco').toLowerCase()
+  const atRisk = atRiskRaw === 'sim' || atRiskRaw === 'yes'
+
+  const riskReasonRaw = grab('Motivo do risco')
+  const riskReason = atRisk && riskReasonRaw && riskReasonRaw.toLowerCase() !== 'nenhum'
+    ? riskReasonRaw
+    : null
+
+  const sentimentRaw = grab('Sentimento').toLowerCase()
+  const sentiment: InsightSentiment =
+    sentimentRaw.includes('positivo') ? 'Positivo'
+    : sentimentRaw.includes('negativo') ? 'Negativo'
+    : 'Neutro'
+
+  return {
+    intent: grab('Inten[cç][aã]o') || 'Não identificada',
+    score,
+    scoreLabel: scoreToLabel(score),
+    nextAction: grab('Pr[oó]xima a[cç][aã]o') || 'Aguardar resposta do cliente',
+    alerts,
+    sentiment,
+    stageSuggestion,
+    atRisk,
+    riskReason,
+  }
+}
+
+export async function getConversationInsights(
+  args: AssistantArgs,
+): Promise<AssistantResult<ConversationInsights>> {
+  const settings = await getAccountAiSettings(args.accountId)
+  if (!settings) return { ok: false, error: NOT_CONFIGURED_ERROR }
+
+  const transcript = buildTranscript(args.messages, args.contactName)
+  if (!transcript) {
+    return {
+      ok: true,
+      data: {
+        intent: 'Conversa sem mensagens',
+        score: 50,
+        scoreLabel: 'Indefinido',
+        nextAction: 'Iniciar o contato com o cliente',
+        alerts: [],
+        sentiment: 'Neutro',
+        stageSuggestion: null,
+        atRisk: false,
+        riskReason: null,
+      },
+    }
+  }
+
+  const knowledgeBlock = buildKnowledgeBasePromptBlock(await getAccountKnowledgeBase(args.accountId))
+
+  const instructions = `${baseInstructions(settings.customSystemPrompt, knowledgeBlock)}
+
+Sua tarefa: analisar a conversa abaixo e gerar um diagnóstico completo do lead para o atendente.
+
+Responda EXATAMENTE neste formato (uma linha por campo, sem explicações extras):
+Intenção: <intenção principal detectada — máximo 80 caracteres>
+Score: <número de 0 a 100 — onde 0=Perdido, 1-30=Frio, 31-60=Morno, 61-85=Quente, 86-100=Cliente>
+Próxima ação: <ação concreta que o atendente deve tomar agora — máximo 100 caracteres>
+Sentimento: <Positivo|Neutro|Negativo>
+Alertas: <item1|item2|item3 ou NENHUM — ex: mencionou concorrente|pediu desconto|sinalizou urgência>
+Sugestão de estágio: <nome do estágio sugerido no pipeline ou NENHUMA>
+Em risco: <SIM|NAO>
+Motivo do risco: <razão pela qual o lead está em risco ou NENHUM>`
+
+  try {
+    const result = await createOpenAIResponse({
+      apiKey: settings.apiKey,
+      model: settings.model,
+      instructions,
+      input: transcript,
+    })
+    await logAiUsage({
+      accountId: args.accountId,
+      feature: 'wavi_insights',
+      conversationId: args.conversationId,
+      model: settings.model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      status: 'success',
+    })
+    return { ok: true, data: parseInsights(result.text.trim()) }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Falha ao gerar insights'
+    await logAiUsage({
+      accountId: args.accountId,
+      feature: 'wavi_insights',
+      conversationId: args.conversationId,
+      model: settings.model,
+      status: 'error',
+      errorMessage: message,
+    })
+    return { ok: false, error: message }
+  }
+}

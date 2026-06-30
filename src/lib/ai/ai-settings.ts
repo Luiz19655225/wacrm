@@ -50,6 +50,7 @@ export type AiFeature =
   | 'connection_test'
   | 'rag_document_ingest'
   | 'rag_search'
+  | 'wavi_insights'
 
 interface LogAiUsageArgs {
   accountId: string
