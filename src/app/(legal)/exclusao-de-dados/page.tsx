@@ -105,8 +105,8 @@ export default function ExclusaoDeDadosPage() {
                 <p className="font-medium text-foreground">Opção 2 — Solicitação por e-mail</p>
                 <p className="mt-2 text-xs">
                   Envie um e-mail para{" "}
-                  <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                    lgpd@wavon.com.br
+                  <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                    contato@wavon.com.br
                   </a>{" "}
                   com o assunto <strong className="text-foreground">&ldquo;Solicitação de Exclusão de Dados&rdquo;</strong> e
                   as informações descritas na seção 2 abaixo.
@@ -195,8 +195,8 @@ export default function ExclusaoDeDadosPage() {
               <p className="font-medium text-foreground">Encarregado de Dados — WAVON</p>
               <p className="mt-2 text-xs">
                 E-mail:{" "}
-                <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                  lgpd@wavon.com.br
+                <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                  contato@wavon.com.br
                 </a>
               </p>
               <p className="mt-1 text-xs">Prazo de resposta: até 2 dias úteis para confirmação de recebimento.</p>

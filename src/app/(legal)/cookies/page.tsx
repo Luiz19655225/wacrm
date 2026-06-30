@@ -272,8 +272,8 @@ export default function CookiesPage() {
             <p className="mt-3">
               Para revogar seu consentimento ao uso de cookies de analytics ou exercer qualquer outro
               direito relacionado a dados, entre em contato com{" "}
-              <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                lgpd@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
             </p>
           </section>
@@ -282,8 +282,8 @@ export default function CookiesPage() {
             <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">9. Contato</h2>
             <p>
               Dúvidas sobre nossa política de cookies:{" "}
-              <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                lgpd@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
             </p>
           </section>

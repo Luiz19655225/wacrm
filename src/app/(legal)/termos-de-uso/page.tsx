@@ -115,8 +115,8 @@ export default function TermosDeUsoPage() {
               O acesso ao WAVON é realizado mediante cadastro com e-mail e senha. Você é responsável
               por manter a confidencialidade de suas credenciais e por todas as ações realizadas em sua conta.
               Em caso de suspeita de acesso não autorizado, notifique imediatamente{" "}
-              <a href="mailto:comercial@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                comercial@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
             </p>
             <p className="mt-3">
@@ -209,8 +209,8 @@ export default function TermosDeUsoPage() {
             <p>
               Você pode cancelar sua conta a qualquer momento nas configurações da plataforma ou via
               e-mail para{" "}
-              <a href="mailto:comercial@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                comercial@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
               O cancelamento tem efeito ao final do período já pago. Não há reembolso proporcional
               de períodos já faturados, salvo disposição legal em contrário.
@@ -245,8 +245,8 @@ export default function TermosDeUsoPage() {
             <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">12. Suporte</h2>
             <p>
               O suporte técnico é prestado via e-mail{" "}
-              <a href="mailto:comercial@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                comercial@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>{" "}
               em dias úteis (segunda a sexta, horário de Brasília). Respondemos em até 2 dias úteis.
               A documentação completa da plataforma está disponível em{" "}

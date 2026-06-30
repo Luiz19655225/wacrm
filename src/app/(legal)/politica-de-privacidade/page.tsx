@@ -295,8 +295,8 @@ export default function PoliticaDePrivacidadePage() {
             </ul>
             <p className="mt-3">
               Para exercer esses direitos, entre em contato pelo e-mail{" "}
-              <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                lgpd@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
               Respondemos em até 15 dias úteis.
             </p>
@@ -306,8 +306,8 @@ export default function PoliticaDePrivacidadePage() {
             <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">10. Encarregado de Dados (DPO)</h2>
             <p>
               Nosso Encarregado de Proteção de Dados pode ser contatado pelo e-mail{" "}
-              <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                lgpd@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
               Para dúvidas gerais sobre privacidade ou para exercer seus direitos, utilize o mesmo canal.
             </p>
@@ -322,8 +322,8 @@ export default function PoliticaDePrivacidadePage() {
             </p>
             <p className="mt-3">
               Versões anteriores desta Política estão disponíveis mediante solicitação a{" "}
-              <a href="mailto:lgpd@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                lgpd@wavon.com.br
+              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                contato@wavon.com.br
               </a>.
             </p>
           </section>
