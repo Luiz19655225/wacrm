@@ -701,8 +701,46 @@ Inbox → conversa "Caçador De Liquidação" → painel WAVI INSIGHTS carregou 
 
 **Migration `040` aplicada em produção** (30/06/2026) — `ai_usage_logs_feature_check` inclui `'wavi_insights'`, rastreamento de uso ativo.
 
+## Fase 9.1 — Meta Cloud API Embedded Signup v4 (Coexistência) (30/06/2026) — ✅ DEPLOYADA, aguardando Meta
+Commit `2fd1ec3`. Deploy `dpl_762a2sPtWqmkzcejG37ixnDpuCnw`. **65/65 testes Playwright mantidos.**
+
+Novo método de conexão WhatsApp via OAuth da Meta (Embedded Signup). Coexiste com a integração manual (Evolution API) sem remover ou alterar código existente.
+
+### Princípios de coexistência
+- `META_EMBEDDED` é um novo provider/tipo totalmente independente — não toca em `EVOLUTION` nem em `META` existentes
+- Credenciais sempre criptografadas via AES-256-GCM (`encrypt`/`decrypt`)
+- Tokens nunca armazenados em texto puro; nunca expostos no terminal
+- Exchange de código acontece server-side (rota `/api/whatsapp/embedded-signup/exchange`)
+
+### Novos arquivos
+- `src/lib/channels/meta-embedded-adapter.ts` — adapter `META_EMBEDDED`: `getStatus` (verifyPhoneNumber), `sendMessage` (text + media), `connect`/`disconnect` (no-op/not-implemented)
+- `src/app/api/whatsapp/embedded-signup/exchange/route.ts` — POST: troca `code` Meta → access token, persiste em `account_connections` + `whatsapp_config` (detecta coexistência), bootstrap de webhooks WABA (`subscribeWebhookFields`, `startHistorySync`, `startContactsSync`)
+- `supabase/migrations/041_meta_embedded_signup.sql` — constraints `account_connections` para `META_EMBEDDED` + colunas `whatsapp_config` (`provider`, `coexistence_enabled`, `organization_id`)
+
+### Arquivos modificados
+- `src/types/index.ts` — `ChannelConnectionType` + `'META_EMBEDDED'`; `ChannelProvider` + `'META_EMBEDDED'`; campos `provider`/`coexistence_enabled`/`organization_id` em `WhatsAppConfig`
+- `src/lib/channels/types.ts` — provider union: `'META' | 'EVOLUTION' | 'META_EMBEDDED'`
+- `src/lib/channels/registry.ts` — `metaEmbeddedAdapter` registrado
+- `src/app/api/channels/connections/route.ts` — `TYPE_PROVIDER_PAIRS`: `META_EMBEDDED: 'META_EMBEDDED'`
+- `src/lib/whatsapp/meta-api.ts` — 5 novas funções: `exchangeCodeForToken`, `getPhoneNumbers`, `subscribeWebhookFields`, `startHistorySync`, `startContactsSync`
+- `src/components/settings/whatsapp-config.tsx` — card "Conectar via Meta (Embedded Signup)" + FB SDK lazy load + `handleEmbeddedSignup()` com `FB.login()` + badge de status + divider "ou integração manual"
+- `src/app/api/whatsapp/webhook/route.ts` — fallback: se `phone_number_id` não encontrado em `whatsapp_config`, busca em `account_connections` com `provider = 'META_EMBEDDED'`
+- `.env.local.example` — seção "Meta Embedded Signup (Fase 9.1)" com `NEXT_PUBLIC_META_APP_ID` e `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`
+
+### Variáveis de ambiente necessárias (adicionar no Vercel Dashboard)
+- `NEXT_PUBLIC_META_APP_ID` — ID numérico do App Meta (mesmo valor que `META_APP_ID` se já configurado)
+- `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` — Config ID criado em Meta App → WhatsApp → Embedded Signup
+
+### Pendências obrigatórias antes de usar em produção
+1. Criar Config ID: Meta App Dashboard → WhatsApp → Embedded Signup Configuration
+2. Configurar permissões do App: `whatsapp_business_management`, `business_management`
+3. Configurar Webhook URL na Meta: `https://www.wavon.com.br/api/whatsapp/webhook`
+4. Configurar permissões do Business Manager
+5. Adicionar `NEXT_PUBLIC_META_APP_ID` e `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` no Vercel Dashboard
+6. Aplicar `supabase/migrations/041_meta_embedded_signup.sql` no SQL Editor do Supabase
+
 ## Próxima fase planejada
-A definir.
+A definir (após conclusão das pendências manuais da Fase 9.1).
 
 ---
 

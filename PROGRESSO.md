@@ -266,8 +266,33 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 Pendência obrigatória:
 - [x] Migration `040_wavi_copilot.sql` aplicada no Supabase (30/06/2026) — `ai_usage_logs_feature_check` agora inclui `'wavi_insights'`
 
+## Fase 9.1 — Meta Cloud API Embedded Signup v4 (Coexistência) (30/06/2026)
+✅ Código deployado em produção (commit `2fd1ec3`) — deploy `dpl_762a2sPtWqmkzcejG37ixnDpuCnw`
+⏳ Aguardando ações manuais na Meta antes de poder ser usado em produção
+
+- [x] `src/types/index.ts` — `ChannelConnectionType` + `'META_EMBEDDED'`, `ChannelProvider` + `'META_EMBEDDED'`, campos `provider`/`coexistence_enabled`/`organization_id` em `WhatsAppConfig`
+- [x] `src/lib/channels/types.ts` — provider union ampliado: `'META' | 'EVOLUTION' | 'META_EMBEDDED'`
+- [x] `src/lib/channels/meta-embedded-adapter.ts` — NOVO — adapter `META_EMBEDDED`: `connect` (not implemented), `getStatus` (verifyPhoneNumber), `sendMessage` (text + media), `disconnect` (no-op); credenciais lidas via `decrypt(credentials_encrypted)`
+- [x] `src/lib/channels/registry.ts` — `metaEmbeddedAdapter` registrado no switch-case
+- [x] `src/app/api/channels/connections/route.ts` — `TYPE_PROVIDER_PAIRS` ampliado: `META_EMBEDDED: 'META_EMBEDDED'`
+- [x] `src/lib/whatsapp/meta-api.ts` — 5 novas funções: `exchangeCodeForToken`, `getPhoneNumbers`, `subscribeWebhookFields`, `startHistorySync`, `startContactsSync`
+- [x] `src/app/api/whatsapp/embedded-signup/exchange/route.ts` — NOVO — POST: exchange code → token, persist `account_connections` + `whatsapp_config` (coexistence detect), bootstrap WABA webhooks
+- [x] `src/components/settings/whatsapp-config.tsx` — card "Conectar via Meta (Embedded Signup)" + FB SDK lazy load + `handleEmbeddedSignup()` + badge de status `meta_embedded` + divider "ou integração manual"
+- [x] `src/app/api/whatsapp/webhook/route.ts` — fallback: se `whatsapp_config` não encontrar `phone_number_id`, busca `account_connections` com `provider = 'META_EMBEDDED'`
+- [x] `.env.local.example` — seção "Meta Embedded Signup (Fase 9.1)" com `NEXT_PUBLIC_META_APP_ID` e `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`
+- [x] `supabase/migrations/041_meta_embedded_signup.sql` — NOVA — constraints `account_connections` (provider/type/pairing) + colunas `whatsapp_config` (`provider`, `coexistence_enabled`, `organization_id`)
+
+Pendências obrigatórias (ações manuais na Meta):
+- [ ] Criar Config ID: Meta App Dashboard → WhatsApp → Embedded Signup Configuration
+- [ ] Configurar permissões do App Meta: `whatsapp_business_management`, `business_management`
+- [ ] Configurar Webhook URL na Meta: `https://www.wavon.com.br/api/whatsapp/webhook`
+- [ ] Configurar permissões do Business Manager
+- [ ] Adicionar no Vercel Dashboard: `NEXT_PUBLIC_META_APP_ID` e `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`
+- [x] Migration `041_meta_embedded_signup.sql` aplicada no Supabase (30/06/2026) — constraints `SITE_WIDGET` preservadas, `whatsapp_config.provider` default `'MANUAL'`
+- [x] Validação browser em produção (30/06/2026): card "Conectar via Meta" renderizado, botão funciona, toast de erro correto ao clicar sem env vars configuradas
+
 ## Status geral (30/06/2026)
-Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas. Migration `040` criada, aguardando aplicação manual.
+Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `040` aplicadas. Migration `041` criada, aguardando aplicação manual.
 
 Funcionalidades ativas:
 - ✅ CRM (Contatos, Pipeline/Negociações, Automações)
@@ -285,9 +310,10 @@ Funcionalidades ativas:
 - ✅ Dashboard Executivo (/dashboard-executivo — KPIs, gráficos, pipeline, integrações)
 - ✅ Analytics Inteligente (/analytics — 6 abas, filtros globais, exportação CSV)
 - ✅ **65/65 testes Playwright passando em produção**
+- ⏳ **Meta Embedded Signup (Fase 9.1)**: código deployado, aguardando Config ID Meta + migration `041`
 
 ## Próxima fase
-A definir.
+A definir (após conclusão das pendências manuais da Fase 9.1).
 
 Pendências não-bloqueantes:
 - Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
