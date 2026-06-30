@@ -699,7 +699,7 @@ Loga em `ai_usage_logs` com `feature: 'wavi_insights'`. Retorna objeto padrão v
 ### Validação em produção
 Inbox → conversa "Caçador De Liquidação" → painel WAVI INSIGHTS carregou com Score "Frio · 10/100", intenção "Oportunidade de venda de produtos em liquidação", sentimento "Negativo", próxima ação "Ignorar ou avaliar mensagens indesejadas". Banner de Resumo da WAVI visível e expandido com pontos principais e próxima ação sugerida.
 
-**Pendência**: aplicar `040_wavi_copilot.sql` no SQL Editor do Supabase para que o `ai_usage_logs` registre corretamente o uso do `wavi_insights`. O endpoint funciona sem a migration, mas o log falha silenciosamente (best-effort por design).
+**Migration `040` aplicada em produção** (30/06/2026) — `ai_usage_logs_feature_check` inclui `'wavi_insights'`, rastreamento de uso ativo.
 
 ## Próxima fase planejada
 A definir.

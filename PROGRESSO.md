@@ -264,7 +264,7 @@ Gotchas registrados (ver `feedback_serverless_webhooks.md`):
 - [x] Validado em produção: painel WAVI Insights carregou com Score "Frio · 10/100", intenção e sentimento corretos; banner de auto-resumo visível em conversa com muitas mensagens
 
 Pendência obrigatória:
-- [ ] **Aplicar `040_wavi_copilot.sql` no SQL Editor do Supabase** — sem isso o log de `ai_usage_logs` com `feature='wavi_insights'` falha silenciosamente (endpoint funciona, mas uso não é rastreado)
+- [x] Migration `040_wavi_copilot.sql` aplicada no Supabase (30/06/2026) — `ai_usage_logs_feature_check` agora inclui `'wavi_insights'`
 
 ## Status geral (30/06/2026)
 Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `039` aplicadas. Migration `040` criada, aguardando aplicação manual.
@@ -290,7 +290,6 @@ Funcionalidades ativas:
 A definir.
 
 Pendências não-bloqueantes:
-- **Aplicar `040_wavi_copilot.sql`** no SQL Editor do Supabase (rastreamento de uso do WAVI Insights).
 - Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`).
 - Logs temporários em `evolution-webhook-processor.ts` (`// TEMP DIAGNOSTIC LOG`) — remover quando estável.
