@@ -57,6 +57,33 @@ export async function POST(
       return NextResponse.json({ connection, alreadyConnected: true })
     }
 
+    // Remove any other QR_CODE rows for this account before provisioning.
+    // Evolution maps instanceName = accountId (1:1), so more than one
+    // QR_CODE row is always a stale duplicate. Clicking "Tentar novamente"
+    // on any card converges the account back to a single row.
+    const { data: otherRows } = await ctx.supabase
+      .from('account_connections')
+      .select('id')
+      .eq('account_id', ctx.accountId)
+      .eq('connection_type', 'QR_CODE')
+      .neq('id', id)
+
+    if (otherRows && otherRows.length > 0) {
+      const staleIds = otherRows.map((r: Record<string, unknown>) => r.id as string)
+      const { error: cleanupErr } = await ctx.supabase
+        .from('account_connections')
+        .delete()
+        .in('id', staleIds)
+        .eq('account_id', ctx.accountId)
+      if (cleanupErr) {
+        console.warn('[POST /api/channels/connections/[id]/connect] duplicate QR_CODE cleanup failed:', cleanupErr)
+      } else if (staleIds.length > 0) {
+        console.info(
+          `[POST /api/channels/connections/[id]/connect] purged ${staleIds.length} duplicate QR_CODE rows for account ${ctx.accountId}`,
+        )
+      }
+    }
+
     let qrcodeBase64: string | null
     try {
       const result = await getChannelAdapter('EVOLUTION').connect(connection as unknown as AccountConnection)
