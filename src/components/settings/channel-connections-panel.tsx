@@ -106,6 +106,8 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
       const res = await fetch(`/api/channels/connections/${connectionId}/connect`, {
         method: "POST",
       });
+      // Always refresh — the server may have deleted duplicate rows even on error.
+      await fetchConnections();
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: null, details: null }));
         const msg = body.details
@@ -114,7 +116,6 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
         toast.error(msg);
         return;
       }
-      await fetchConnections();
     } finally {
       setConnectingId(null);
     }
