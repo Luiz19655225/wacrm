@@ -367,6 +367,52 @@ Pendências obrigatórias (ações manuais na Meta):
 
 **Nota pós-validação**: erro 403 é problema de credenciais na Evolution API do usuário (API Key inválida/expirada ou plano não permite criar instâncias) — não é bug de código.
 
+## Sessão 01/07/2026 — Fase 9.1.x Evolution API (estabilização QR + auditoria + correções arquiteturais)
+
+Sessão longa focada exclusivamente na integração Evolution (QR Code / WhatsApp Web). **Nenhuma outra área tocada.**
+
+### Resolvido
+- ✅ Erro **403 "name already in use"** eliminado — `connect()` passou a usar `GET /instance/connect/{name}` (fast path) em vez de delete+create (commit `e232cff`).
+- ✅ Criação/renovação de instância estabilizada; **QR Code volta a ser gerado**.
+- ✅ **Loop infinito "QR expirado — gerando novo..." corrigido** (commit `343d8f1`): `catch` em `handleConnect`, `fetchConnections` no `finally`, e ordem de renderização priorizando QR válido sobre `isQrExpired` (um QR real deixava de aparecer só porque `updated_at` parecia velho após uma falha de rede silenciosa — `ERR_CONNECTION_TIMED_OUT`).
+- ✅ **Auditoria técnica completa** da integração Evolution (frontend, adapters, endpoints, webhook, banco, infra, código morto/race conditions).
+- ✅ **Correções arquiteturais A1/A2/A3/B2/B3/B5** (commit `c49257e`).
+
+### Correções arquiteturais (commit `c49257e`)
+- **A1** (`channel-connections-panel.tsx`) — auto-refresh não renova mais QR por timer cego; usa o **estado real da Evolution** (poll de `/status` a cada 10s): `open`→reconcilia; `close`→QR novo; `connecting`→**não faz nada** (protege o handshake de pareamento, que o timer de 40s podia abortar).
+- **A2** (`[id]/status/route.ts`) — **reconciliação automática**: Evolution=`open` e banco≠`connected` → banco atualizado para `connected`. Deixa de depender de um único webhook `connection.update=open`.
+- **A3** — simplificação dos timers; removidos `autoRefreshedRef`/`connectionsRef`; cleanup correto no unmount.
+- **B2** (`evolution-webhook-processor.ts`) — otimização: short-circuit de eventos ignorados **antes** do `resolveConnection` (evita query ao banco por evento descartado).
+- **B3** (`evolution-api.ts`) — **timeout de 15s** (`AbortSignal.timeout`) em todas as chamadas Evolution.
+- **B5** — limpeza técnica: `qrcode_base64` limpo ao conectar; mensagem de validação inclui `META_EMBEDDED`; comentário obsoleto em `channels/types.ts`.
+
+### Validações
+- `npm run typecheck` OK · `npm run lint` OK (0 erros) · `npm run build` OK.
+- Commit: **`c49257e`** · Deploy: **`dpl_B6gLoiNLHr6Tsj8BMDNJ5az13uDU`** (READY) · Produção: `https://www.wavon.com.br`.
+
+### Bloqueio restante (NÃO é código WAVON)
+Após escanear o QR, a instância continua em `connecting` e **nunca muda para `open`** → banco permanece em `qrcode_ready`. Prova: a instância **limpa** `wavon-diag-test-01`, criada direto na Evolution fora do WAVON, **também não pareou**. Hipótese principal: **Evolution v2.3.7 / Baileys / Railway**, ou **restrição temporária anti-abuso do WhatsApp** (muitas tentativas de pareamento hoje). Issues públicas relacionadas: **#2298** (QR bloqueado 24h), **#1543** (scan sem completar sessão), **#2518** (Bad MAC v2.3.7 Railway).
+
+### Decisão operacional
+Interromper completamente os testes por **~24h**. Não realizar novas tentativas de pareamento hoje.
+
+### Pendências
+- Arquivo `C:\Users\Luiz\Wavon CRM\.env.evolution-diag.local` (credenciais Evolution de produção, usado no diagnóstico) — **não commitado**, protegido pelo `.gitignore`. **Apagar ao final da investigação.**
+- **B1 (não autorizado ainda):** re-registrar webhook via `/webhook/set` (toca a Evolution).
+- Instância de teste `wavon-diag-test-01` na Evolution — considerar remover (só com decisão do usuário).
+
+### Próxima sessão (ordem obrigatória)
+1. Confirmar que passaram ~24h desde a última tentativa de pareamento.
+2. Conferir "Aparelhos conectados" no WhatsApp.
+3. Remover o arquivo `.env.evolution-diag.local`.
+4. **Não alterar código inicialmente** — fazer apenas **um teste controlado** de pareamento.
+5. Monitorar: Evolution, Railway, webhook, `connectionState`.
+6. Confirmar mudança para `open` e validar o Inbox.
+
+> **REGRA:** não iniciar novas funcionalidades do WAVON antes de concluir definitivamente a integração da Evolution API.
+
+---
+
 ## Status geral (30/06/2026)
 Plataforma operacional em produção (`www.wavon.com.br`). Migrations `024` a `041` aplicadas.
 
@@ -390,9 +436,9 @@ Funcionalidades ativas:
 - ⏳ **Meta Embedded Signup (Fase 9.1)**: código deployado, migration `041` aplicada, aguardando Config ID Meta + env vars Vercel
 
 ## Próxima fase
-A definir (após conclusão das pendências manuais da Fase 9.1).
+**BLOQUEADA até concluir a integração Evolution API** (ver "Sessão 01/07/2026" acima). Não iniciar novas funcionalidades do WAVON antes de o pareamento Evolution chegar a `open` de forma estável em produção.
 
 Pendências não-bloqueantes:
 - Enforcement real de billing por `access_status` — fase própria, não iniciar sem aprovação explícita.
 - Outlook Calendar: implementado mas sem credenciais Azure (`MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`).
-- Logs temporários em `evolution-webhook-processor.ts` (`// TEMP DIAGNOSTIC LOG`) — remover quando estável.
+- Logs temporários "TEMP DIAGNOSTIC LOG" em `evolution-webhook-processor.ts` — **verificado em 01/07: não existem mais no código** (item já resolvido, pode ser removido desta lista).

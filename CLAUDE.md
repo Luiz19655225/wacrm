@@ -924,6 +924,46 @@ Diagnóstico e correções para "QR Code gerado mas WhatsApp não conectou ao es
 - **Botão "Atualizar QR"**: label substitui "Gerar QR" quando `qrcode_ready`, com ícone RefreshCcw
 - **Tick state (`tickNow`)**: ativo apenas quando QR visível, desligado fora disso
 
+## Fase 9.1.x — Estabilização QR + Auditoria + Correções Arquiteturais Evolution (01/07/2026) — ⚠️ QR OK, PAREAMENTO BLOQUEADO NO LADO EVOLUTION
+
+**LER ANTES DE MEXER NA INTEGRAÇÃO EVOLUTION.** Sessão longa (01/07), múltiplos commits, dois modelos (Sonnet → Opus 4.8). Foco exclusivo em Evolution/QR. Deploy final `dpl_B6gLoiNLHr6Tsj8BMDNJ5az13uDU` (commit `c49257e`) READY em produção.
+
+### Sequência de commits da sessão (todos em produção)
+`a7bad0d` → `1c440db` → `18dc63f` → `cd06a12` → `cfb975c` → `e232cff` (403 resolvido, fast path) → `343d8f1` (loop "QR expirado" resolvido) → `c49257e` (auditoria A1/A2/A3/B2/B3/B5).
+
+### Resolvido
+1. **403 "name already in use"**: `connect()` usa `GET /instance/connect/{name}` (fast path, renova QR sem tocar na instância); full reset (logout+delete+create) só para primeiro setup ou instância sumida. `evolution-adapter.ts`.
+2. **Loop "QR expirado — gerando novo..." infinito** (`343d8f1`): causa raiz = `handleConnect` sem `catch`; uma falha de rede (`ERR_CONNECTION_TIMED_OUT`, confirmada na rede da usuária) pulava toast e `fetchConnections`, travando o latch de auto-refresh permanentemente; além disso `isQrExpired` era avaliado ANTES de `qrcodeBase64` na renderização, escondendo um QR válido só por `updated_at` velho. Fix: `catch` + `fetchConnections` no `finally` + ordem de render (QR válido vence `isQrExpired`).
+3. **Auditoria técnica completa** da integração (frontend/adapters/endpoints/webhook/banco/infra/código morto/race conditions).
+
+### Correções arquiteturais (commit `c49257e` — WAVON-side, sem tocar Evolution/Railway/Redis/banco)
+- **A1** (`channel-connections-panel.tsx`): auto-refresh por timer cego REMOVIDO. O timer de 40s rotacionava o QR (`POST /connect`) mesmo durante o handshake pós-scan, podendo abortar o pareamento do Baileys. Agora o refresh é guiado por poll de `GET /status` a cada 10s (`STATUS_POLL_INTERVAL_MS`): estado `open`→reconcilia; `close`→gera QR novo; `connecting`→**não faz nada** (protege o pareamento). Countdown vira apenas visual.
+- **A2** (`[id]/status/route.ts`): reconciliação — quando Evolution reporta `open` e banco≠`connected`, promove para `connected` (+`connected_at`). O estado `connected` deixa de depender de um único webhook `connection.update=open`.
+- **A3**: removidos `autoRefreshedRef`/`connectionsRef` e o efeito de auto-refresh por timer; poll de `/status` com `cancelled`+`clearInterval` no unmount; `qrTargetId` derivado como string estável (não reseta o interval a cada poll de lista de 4s).
+- **B2** (`evolution-webhook-processor.ts`): `HANDLED_EVENTS` — short-circuit de eventos não tratados ANTES do `resolveConnection`, evitando query ao Supabase por evento descartado (com `byEvents:false` a Evolution manda todos os eventos).
+- **B3** (`evolution-api.ts`): `EVOLUTION_TIMEOUT_MS=15000` via `AbortSignal.timeout` em `evolutionFetch` (evita função serverless pendurada e retry de webhook).
+- **B5**: `handleConnectionUpdate` limpa `metadata.qrcode_base64` ao conectar; mensagem de validação em `connections/route.ts` inclui `META_EMBEDDED`; comentário de cabeçalho obsoleto em `channels/types.ts` atualizado (adapters totalmente implementados, não mais "stub").
+
+### Bloqueio que PERMANECE (não é código WAVON)
+Após escanear o QR, a instância fica em `connecting` e **nunca vira `open`** → banco permanece `qrcode_ready`. **Prova de que não é o WAVON:** a instância LIMPA `wavon-diag-test-01`, criada direto na Evolution (via `vercel env pull` + script isolado, fora de todo código WAVON), **também não pareou** — ficou em `connecting`. Hipótese principal: **Evolution v2.3.7 / Baileys / Railway**, ou **restrição temporária anti-abuso do WhatsApp** (muitas tentativas de logout/delete/create + scans hoje). Issues públicas: **#2298** (conta restrita, QR bloqueado ~24h), **#1543** (scan não completa sessão), **#2518** (Bad MAC v2.3.7 em Railway).
+
+### Decisão operacional
+Interromper testes por **~24h**. Não realizar novas tentativas de pareamento no dia 01/07.
+
+### Autorizado mas NÃO feito
+- **B1**: re-registrar webhook via `/webhook/set` (toca Evolution — pendente de autorização).
+- Investigação direta no Railway (logs/versão/Redis) — precisa de acesso ao painel, indisponível para o assistente.
+
+### Pendências / próxima sessão (ordem obrigatória)
+1. Confirmar ~24h desde a última tentativa de pareamento.
+2. Conferir WhatsApp → Aparelhos conectados.
+3. **APAGAR** `C:\Users\Luiz\Wavon CRM\.env.evolution-diag.local` (credenciais Evolution prod; gitignored; não commitado).
+4. **NÃO alterar código inicialmente** — apenas **um teste controlado** de pareamento.
+5. Monitorar Evolution + Railway + webhook + `connectionState`; confirmar `open`; validar Inbox.
+6. Considerar remover a instância de teste `wavon-diag-test-01`.
+
+> **REGRA:** não iniciar novas funcionalidades do WAVON antes de concluir definitivamente a integração da Evolution API.
+
 ## Decisões e restrições que seguem valendo
 - Nunca trocar os nameservers do domínio `wavon.com.br` para a Vercel — DNS fica na HostGator.
 - Preservar registros de e-mail/serviços da HostGator (mail, webmail, cpanel, whm).
