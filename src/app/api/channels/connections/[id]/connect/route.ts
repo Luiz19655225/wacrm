@@ -106,7 +106,9 @@ export async function POST(
 
     const metadata = {
       ...(connection.metadata as Record<string, unknown> | null ?? {}),
-      ...(qrcodeBase64 ? { qrcode_base64: qrcodeBase64 } : {}),
+      // Always overwrite — null clears a stale QR so the frontend
+      // shows a spinner instead of an already-expired image.
+      qrcode_base64: qrcodeBase64,
     }
 
     const { data: updated, error: updateError } = await ctx.supabase

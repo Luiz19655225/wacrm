@@ -10,7 +10,6 @@
 // ============================================================
 
 import {
-  connectInstance,
   createInstance,
   deleteInstance,
   fetchConnectionState,
@@ -78,23 +77,20 @@ export const evolutionAdapter: ChannelAdapter = {
     // FULL RESET — first-time setup or fast path fails:
     //   logout (disconnect WhatsApp session) → delete → create fresh.
     //   logout is best-effort: 404 on first-time setup is fine.
+    // Always do a full reset (logout → delete → create) so the instance
+    // is recreated fresh with the current webhook config. This is the
+    // only reliable way to re-register the webhook after a config change
+    // and to avoid "name already in use" 403 from a stale instance.
+    //
+    // The 1-second sleep between delete and create handles the race
+    // condition in Evolution v2 where the instance is removed from
+    // in-memory state synchronously but may still appear in the Redis
+    // registry for a brief window — long enough to make a back-to-back
+    // POST /instance/create see the name as still in use.
     const name = connection.account_id;
-
-    if (connection.external_id) {
-      try {
-        const existing = await connectInstance(name);
-        // null means the instance is already "open" (WhatsApp connected) —
-        // fall through to full reset so the user can re-pair.
-        if (existing.qrcodeBase64 !== null) {
-          return { qrcodeBase64: existing.qrcodeBase64 };
-        }
-      } catch {
-        // Instance doesn't exist on the server any more — fall through to full reset.
-      }
-    }
-
     try { await logoutInstance(name); } catch { /* not connected or doesn't exist */ }
     try { await deleteInstance(name); } catch { /* doesn't exist — fine */ }
+    await new Promise<void>(resolve => setTimeout(resolve, 1000));
     const result = await createInstance(name, webhookUrl(), webhookToken());
     return { qrcodeBase64: result.qrcodeBase64 };
   },
