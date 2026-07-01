@@ -70,7 +70,8 @@ export async function createInstance(
       webhook: {
         url: webhookUrl,
         headers: { Authorization: `Bearer ${webhookToken}` },
-        byEvents: false,  // send all events — byEvents:true requires lowercase dot names
+        byEvents: false,  // send all events — byEvents:true with wrong names blocks delivery
+        events: [],      // Evolution crashes on .length when events is undefined
       },
     }),
   })
