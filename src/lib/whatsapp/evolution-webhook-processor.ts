@@ -110,10 +110,16 @@ async function handleConnectionUpdate(
   }
 
   if (state === 'close') {
+    // Only mark disconnected when previously connected — otherwise this is a
+    // transient Baileys WebSocket reset during QR pairing (or the logout event
+    // fired by our own logoutInstance() call in the connect flow) and should be
+    // ignored. The conditional .eq('connection_status', 'connected') means the
+    // update is a no-op when the row is in any other state.
     const { error } = await supabaseAdmin()
       .from('account_connections')
       .update({ connection_status: 'disconnected', updated_at: new Date().toISOString() })
       .eq('id', connection.id)
+      .eq('connection_status', 'connected')
     if (error) console.error('[evolution webhook] connection->disconnected failed:', error.message)
     return
   }
