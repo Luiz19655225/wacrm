@@ -95,6 +95,23 @@ export async function fetchConnectionState(instanceName: string): Promise<string
 }
 
 /**
+ * Requests a new QR code from an EXISTING instance without deleting it.
+ * Works regardless of the instance's current state (close, connecting, open).
+ * Use this for QR refresh (auto-refresh, "Atualizar QR") — avoids the
+ * "name already in use" 403 that delete+create produces when the instance
+ * is in "connecting/qrcode" state and logout has no effect.
+ */
+export async function connectInstance(instanceName: string): Promise<CreateInstanceResult> {
+  const data = await evolutionFetch<{ base64?: string; code?: string }>(
+    `/instance/connect/${instanceName}`,
+  )
+  return {
+    instanceName,
+    qrcodeBase64: data?.base64 ?? null,
+  }
+}
+
+/**
  * Inbound media download — POST /chat/getBase64FromMediaMessage/{instance}.
  * Confirmed against the Evolution API source (EvolutionAPI/evolution-api,
  * src/api/routes/chat.router.ts + chat.controller.ts +

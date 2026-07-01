@@ -10,6 +10,7 @@
 // ============================================================
 
 import {
+  connectInstance,
   createInstance,
   deleteInstance,
   fetchConnectionState,
@@ -65,22 +66,35 @@ export const evolutionAdapter: ChannelAdapter = {
     // resolves back via account_connections.external_id (enforced
     // unique per migration 030_evolution_connections.sql).
     //
-    // Evolution v2 refuses to delete a connected instance (returns 403
-    // "name already in use" on the subsequent create). We must logout
-    // first (disconnects the WhatsApp session) before deleting.
-    // Both steps are best-effort: 404 on first-time setup or any other
-    // transient failure must not block the create.
+    // Two paths depending on whether the instance already exists:
+    //
+    // FAST PATH — instance already provisioned (external_id set):
+    //   Call GET /instance/connect/{name} to get a new QR without touching
+    //   the instance. Works in all states (close, connecting, open).
+    //   Avoids the "name already in use" 403 that logout+delete+create
+    //   produces when the instance is in "connecting/qrcode" state
+    //   (logout has no effect then, so delete silently fails).
+    //
+    // FULL RESET — first-time setup or fast path fails:
+    //   logout (disconnect WhatsApp session) → delete → create fresh.
+    //   logout is best-effort: 404 on first-time setup is fine.
     const name = connection.account_id;
-    try {
-      await logoutInstance(name);
-    } catch {
-      // Not connected or instance doesn't exist — fine.
+
+    if (connection.external_id) {
+      try {
+        const existing = await connectInstance(name);
+        // null means the instance is already "open" (WhatsApp connected) —
+        // fall through to full reset so the user can re-pair.
+        if (existing.qrcodeBase64 !== null) {
+          return { qrcodeBase64: existing.qrcodeBase64 };
+        }
+      } catch {
+        // Instance doesn't exist on the server any more — fall through to full reset.
+      }
     }
-    try {
-      await deleteInstance(name);
-    } catch {
-      // Instance may not exist yet — fine.
-    }
+
+    try { await logoutInstance(name); } catch { /* not connected or doesn't exist */ }
+    try { await deleteInstance(name); } catch { /* doesn't exist — fine */ }
     const result = await createInstance(name, webhookUrl(), webhookToken());
     return { qrcodeBase64: result.qrcodeBase64 };
   },
