@@ -42,12 +42,36 @@ export async function GET(
       evolutionState = `error: ${err instanceof Error ? err.message : 'unknown'}`
     }
 
+    // Reconciliation (A2): connection.update='open' is normally the only event
+    // that promotes the row to 'connected'. If that single webhook delivery is
+    // missed, the DB stays 'qrcode_ready' forever even though Evolution is live.
+    // This endpoint already holds the live state, so promote here too — that
+    // makes 'connected' no longer depend on one webhook arriving.
+    let dbStatus = connection.connection_status as string
+    if (evolutionState === 'open' && dbStatus !== 'connected') {
+      const { error: reconcileError } = await ctx.supabase
+        .from('account_connections')
+        .update({
+          connection_status: 'connected',
+          connected_at: new Date().toISOString(),
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('account_id', ctx.accountId)
+      if (reconcileError) {
+        console.error('[GET /status] reconcile to connected failed:', reconcileError.message)
+      } else {
+        dbStatus = 'connected'
+      }
+    }
+
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
     const webhookUrl = `${siteUrl}/api/webhooks/evolution`
 
     return NextResponse.json({
       evolutionState,
-      dbStatus: connection.connection_status,
+      dbStatus,
       webhookUrl,
     })
   } catch (err) {

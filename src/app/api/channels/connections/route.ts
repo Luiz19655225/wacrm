@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       !(connectionType in TYPE_PROVIDER_PAIRS)
     ) {
       return NextResponse.json(
-        { error: "'connection_type' must be 'QR_CODE' or 'META_API'" },
+        { error: "'connection_type' must be 'QR_CODE', 'META_API', or 'META_EMBEDDED'" },
         { status: 400 },
       );
     }

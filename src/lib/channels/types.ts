@@ -1,13 +1,13 @@
 // ============================================================
 // Channel adapter interface — the contract every connection
-// provider (Meta, Evolution, and whatever comes after) implements.
+// provider (Meta, Evolution, Meta Embedded) implements.
 //
-// Phase 1 scope: the interface and a Meta adapter that delegates to
-// the already-working src/lib/whatsapp/meta-api.ts (no new Meta
-// logic — just a common shape), plus an Evolution stub that throws
-// `ChannelNotImplementedError` for everything. No adapter here is
-// wired into account_connections rows yet beyond create/list — see
-// src/app/api/channels/connections/route.ts.
+// The interface and all three adapters are fully implemented: the
+// Meta adapter delegates to src/lib/whatsapp/meta-api.ts, the
+// Evolution adapter to src/lib/whatsapp/evolution-api.ts, and the
+// Meta Embedded adapter to meta-embedded-adapter.ts. Routes resolve
+// the right one via getChannelAdapter(provider) (registry.ts) and
+// drive it from src/app/api/channels/connections/[id]/connect.
 // ============================================================
 
 import type { AccountConnection, ChannelConnectionStatus } from '@/types';

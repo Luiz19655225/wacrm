@@ -17,9 +17,13 @@ import {
 import type { AccountConnection } from "@/types";
 
 const POLL_INTERVAL_MS = 4000;
-// WhatsApp QR codes expire ~40 s after generation. After this threshold we
-// show "QR expirado" and trigger a silent re-provisioning so the user
-// always has a fresh code to scan without having to click anything.
+// How often we check the live Evolution state while a QR is waiting. Used to
+// reconcile to "connected" and to refresh the QR only when the socket is
+// truly closed — never while pairing is in progress.
+const STATUS_POLL_INTERVAL_MS = 10000;
+// WhatsApp QR codes expire ~40 s after generation. This drives the visual
+// countdown bar only — it no longer triggers a QR refresh (that would rotate
+// the code mid-handshake and break pairing). Refresh is state-driven instead.
 const QR_LIFETIME_S = 40;
 
 const STATUS_LABELS: Record<string, string> = {
@@ -65,15 +69,11 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
   const [checkingStatusId, setCheckingStatusId] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Tracks connection IDs currently being auto-refreshed to prevent double-fire.
-  const autoRefreshedRef = useRef<Set<string>>(new Set());
-  // Refs that let the tick-driven effect read current state without being in its dep array.
-  const connectionsRef = useRef<AccountConnection[]>([]);
   const connectingIdRef = useRef<string | null>(null);
-  // Always holds the latest handleConnect function identity.
+  // Always holds the latest handleConnect function identity, so the
+  // status-poll effect can call it without depending on its identity.
   const handleConnectRef = useRef<(id: string) => Promise<void>>(async () => {});
 
-  useEffect(() => { connectionsRef.current = connections; }, [connections]);
   useEffect(() => { connectingIdRef.current = connectingId; }, [connectingId]);
 
   const fetchConnections = useCallback(async () => {
@@ -114,7 +114,7 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
     };
   }, [connections, fetchConnections]);
 
-  // Tick every second while a QR is shown.
+  // Tick every second while a QR is shown — drives the visual countdown bar only.
   useEffect(() => {
     const hasQr = connections.some((c) => c.connection_status === "qrcode_ready");
     if (!hasQr) return;
@@ -122,28 +122,49 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
     return () => clearInterval(timer);
   }, [connections]);
 
-  // Auto-refresh expired QR codes. Only tick-driven — reads current state
-  // through refs so it does not add connections/connectingId to its dep array
-  // (that would create a feedback loop).
-  useEffect(() => {
-    if (connectingIdRef.current) return; // already provisioning
+  // Id of the QR connection currently awaiting a scan. Derived as a stable
+  // string so the status-poll effect below doesn't reset its interval on every
+  // 4 s list refresh (depending on the `connections` array would do exactly that).
+  const qrTargetId =
+    connections.find(
+      (c) =>
+        c.connection_type === "QR_CODE" &&
+        c.connection_status === "qrcode_ready" &&
+        c.external_id,
+    )?.id ?? null;
 
-    for (const conn of connectionsRef.current) {
-      if (
-        conn.connection_type === "QR_CODE" &&
-        conn.connection_status === "qrcode_ready" &&
-        !autoRefreshedRef.current.has(conn.id) &&
-        getQrSecondsLeft(conn, tickNow) === 0
-      ) {
-        autoRefreshedRef.current.add(conn.id);
-        void handleConnectRef.current(conn.id);
+  // Poll the live Evolution state while a QR waits (A1/A2). This replaces the
+  // old countdown-driven auto-refresh, which rotated the QR every ~40 s even
+  // mid-scan and could tear down an in-progress pairing. Now:
+  //   • 'open'       → the /status route reconciled us to connected; pull it in.
+  //   • 'close'      → socket is dead, safe to request a fresh QR.
+  //   • 'connecting' → do NOTHING (QR still valid or handshake in progress).
+  useEffect(() => {
+    if (!canEditSettings || !qrTargetId) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      if (connectingIdRef.current) return; // a connect is already in flight
+      let state: string;
+      try {
+        const res = await fetch(`/api/channels/connections/${qrTargetId}/status`);
+        if (!res.ok) return;
+        const data: StatusCheckResult = await res.json();
+        state = data.evolutionState;
+      } catch {
+        return; // transient network blip — try again next tick
       }
-      // Once a fresh QR arrives (updated_at updated), allow future auto-refresh.
-      if (autoRefreshedRef.current.has(conn.id) && getQrSecondsLeft(conn, tickNow) > 5) {
-        autoRefreshedRef.current.delete(conn.id);
+      if (cancelled) return;
+      if (state === "open") {
+        await fetchConnections();
+      } else if (state === "close") {
+        await handleConnectRef.current(qrTargetId);
       }
-    }
-  }, [tickNow]); // intentionally only tick-driven — all other values accessed via refs
+    }, STATUS_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [qrTargetId, canEditSettings, fetchConnections]);
 
   async function handleConnect(connectionId: string): Promise<void> {
     setConnectingId(connectionId);
@@ -160,12 +181,10 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
       }
     } catch (err) {
       // fetch() itself never completed (network timeout, DNS, connection
-      // reset) — no res.ok branch runs for this. Release the auto-refresh
-      // latch so the next tick retries instead of leaving the QR panel
-      // stuck on "expirado" forever with no visible error.
+      // reset) — no res.ok branch runs for this. Surface it; the status poll
+      // retries on the next 'close' instead of leaving the panel silently stuck.
       console.error("[channels] handleConnect network failure:", err);
-      autoRefreshedRef.current.delete(connectionId);
-      toast.error("Falha de rede ao gerar o QR Code. Tentando novamente...");
+      toast.error("Falha de rede ao gerar o QR Code.");
     } finally {
       // Always refresh — the server may have deleted duplicate rows even on
       // error, and a network failure above still needs the latest DB state.

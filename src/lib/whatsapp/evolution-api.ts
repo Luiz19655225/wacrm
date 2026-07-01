@@ -17,15 +17,30 @@ function evolutionApiKey(): string {
   return key
 }
 
+// Evolution/Railway can hang. Without a timeout the serverless function would
+// block until Vercel's own function timeout, and a stalled webhook handler
+// would exceed Evolution's delivery window and trigger redeliveries. 15 s
+// covers even a slow inbound-media download while capping the worst case.
+const EVOLUTION_TIMEOUT_MS = 15000
+
 async function evolutionFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${evolutionApiUrl()}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: evolutionApiKey(),
-      ...(init?.headers ?? {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${evolutionApiUrl()}${path}`, {
+      ...init,
+      signal: AbortSignal.timeout(EVOLUTION_TIMEOUT_MS),
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: evolutionApiKey(),
+        ...(init?.headers ?? {}),
+      },
+    })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new Error(`Evolution API ${path} timed out after ${EVOLUTION_TIMEOUT_MS}ms`)
+    }
+    throw err
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')

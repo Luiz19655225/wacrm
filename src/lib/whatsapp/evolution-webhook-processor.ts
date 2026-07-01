@@ -102,6 +102,8 @@ async function handleConnectionUpdate(
         connection_status: 'connected',
         connected_at: new Date().toISOString(),
         last_error: null,
+        // Clear the now-consumed QR so a stale image can't linger in metadata.
+        metadata: { ...connection.metadata, qrcode_base64: null },
         updated_at: new Date().toISOString(),
       })
       .eq('id', connection.id)
@@ -497,9 +499,20 @@ export interface EvolutionWebhookPayload {
  * rather than treated as errors (Evolution adds new event types over
  * time; this must not start rejecting webhook deliveries on a 200).
  */
+const HANDLED_EVENTS = new Set(['qrcode.updated', 'connection.update', 'messages.upsert'])
+
 export async function processEvolutionWebhookEvent(payload: EvolutionWebhookPayload): Promise<void> {
   if (!payload.instance) {
     console.warn('[evolution webhook] payload missing instance, ignored')
+    return
+  }
+
+  // Short-circuit BEFORE resolveConnection: with byEvents:false, Evolution
+  // delivers every event type (presence, receipts, chats.upsert, …) but we
+  // only handle three. Bailing here skips a Supabase round-trip per ignored
+  // event — real load once a connection is active.
+  if (!payload.event || !HANDLED_EVENTS.has(payload.event)) {
+    console.warn('[evolution webhook] unhandled event type, ignored:', payload.event)
     return
   }
 
@@ -519,7 +532,5 @@ export async function processEvolutionWebhookEvent(payload: EvolutionWebhookPayl
     case 'messages.upsert':
       await handleMessagesUpsert(connection, payload.data)
       break
-    default:
-      console.warn('[evolution webhook] unhandled event type, ignored:', payload.event)
   }
 }
