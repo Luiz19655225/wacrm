@@ -10,6 +10,7 @@
 // ============================================================
 
 import {
+  connectInstance,
   createInstance,
   deleteInstance,
   fetchConnectionState,
@@ -61,33 +62,26 @@ export const evolutionAdapter: ChannelAdapter = {
   provider: 'EVOLUTION',
 
   async connect(connection: AccountConnection): Promise<ChannelConnectResult> {
-    // instanceName = account_id: stable 1:1 mapping the webhook
-    // resolves back via account_connections.external_id (enforced
-    // unique per migration 030_evolution_connections.sql).
+    // instanceName = account_id: stable 1:1 mapping the webhook resolves back
+    // via account_connections.external_id (enforced unique per migration 030).
     //
-    // Two paths depending on whether the instance already exists:
+    // FAST PATH — tenta conectar/renovar QR numa instância já existente via
+    // GET /instance/connect/{name}. Funciona em qualquer estado da instância
+    // (close, connecting, open). Evita o 403 "name already in use" que surge
+    // quando a instância está em "connecting/qrcode" state: DELETE /instance/delete
+    // falha silenciosamente nesse estado (Evolution recusa o delete), então o
+    // createInstance seguinte encontra o nome ainda em uso.
     //
-    // FAST PATH — instance already provisioned (external_id set):
-    //   Call GET /instance/connect/{name} to get a new QR without touching
-    //   the instance. Works in all states (close, connecting, open).
-    //   Avoids the "name already in use" 403 that logout+delete+create
-    //   produces when the instance is in "connecting/qrcode" state
-    //   (logout has no effect then, so delete silently fails).
-    //
-    // FULL RESET — first-time setup or fast path fails:
-    //   logout (disconnect WhatsApp session) → delete → create fresh.
-    //   logout is best-effort: 404 on first-time setup is fine.
-    // Always do a full reset (logout → delete → create) so the instance
-    // is recreated fresh with the current webhook config. This is the
-    // only reliable way to re-register the webhook after a config change
-    // and to avoid "name already in use" 403 from a stale instance.
-    //
-    // The 1-second sleep between delete and create handles the race
-    // condition in Evolution v2 where the instance is removed from
-    // in-memory state synchronously but may still appear in the Redis
-    // registry for a brief window — long enough to make a back-to-back
-    // POST /instance/create see the name as still in use.
+    // FULL RESET — usado apenas no primeiro setup ou quando a instância sumiu no
+    // servidor Evolution (Railway restart, delete manual). Fluxo:
+    // logout → delete → 1 s → create com webhook configurado.
     const name = connection.account_id;
+    try {
+      const result = await connectInstance(name);
+      return { qrcodeBase64: result.qrcodeBase64 };
+    } catch {
+      // Instância não existe no servidor Evolution → full reset
+    }
     try { await logoutInstance(name); } catch { /* not connected or doesn't exist */ }
     try { await deleteInstance(name); } catch { /* doesn't exist — fine */ }
     await new Promise<void>(resolve => setTimeout(resolve, 1000));
