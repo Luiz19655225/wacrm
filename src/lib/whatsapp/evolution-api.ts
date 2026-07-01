@@ -152,6 +152,15 @@ export async function sendMediaMessage(
   })
 }
 
+/**
+ * Disconnects an Evolution instance from WhatsApp without removing it.
+ * Must be called before deleteInstance when the instance is in an open/connected
+ * state — Evolution v2 returns 403 on delete if the session is still active.
+ */
+export async function logoutInstance(instanceName: string): Promise<void> {
+  await evolutionFetch(`/instance/logout/${instanceName}`, { method: 'DELETE' })
+}
+
 export async function deleteInstance(instanceName: string): Promise<void> {
   await evolutionFetch(`/instance/delete/${instanceName}`, { method: 'DELETE' })
 }

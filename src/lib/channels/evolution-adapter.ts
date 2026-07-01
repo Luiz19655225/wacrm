@@ -13,6 +13,7 @@ import {
   createInstance,
   deleteInstance,
   fetchConnectionState,
+  logoutInstance,
   sendMediaMessage,
   sendTextMessage,
 } from '@/lib/whatsapp/evolution-api';
@@ -64,16 +65,23 @@ export const evolutionAdapter: ChannelAdapter = {
     // resolves back via account_connections.external_id (enforced
     // unique per migration 030_evolution_connections.sql).
     //
-    // Delete any pre-existing Evolution instance before recreating it.
-    // instanceName is deterministic (= account_id), so we don't need
-    // external_id to be set — we know the name. If Evolution returns
-    // 404 (first-time setup), we catch and continue.
+    // Evolution v2 refuses to delete a connected instance (returns 403
+    // "name already in use" on the subsequent create). We must logout
+    // first (disconnects the WhatsApp session) before deleting.
+    // Both steps are best-effort: 404 on first-time setup or any other
+    // transient failure must not block the create.
+    const name = connection.account_id;
     try {
-      await deleteInstance(connection.account_id);
+      await logoutInstance(name);
     } catch {
-      // Instance may not exist yet — that is fine.
+      // Not connected or instance doesn't exist — fine.
     }
-    const result = await createInstance(connection.account_id, webhookUrl(), webhookToken());
+    try {
+      await deleteInstance(name);
+    } catch {
+      // Instance may not exist yet — fine.
+    }
+    const result = await createInstance(name, webhookUrl(), webhookToken());
     return { qrcodeBase64: result.qrcodeBase64 };
   },
 
