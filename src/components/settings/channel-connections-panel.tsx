@@ -151,8 +151,6 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
       const res = await fetch(`/api/channels/connections/${connectionId}/connect`, {
         method: "POST",
       });
-      // Always refresh — the server may have deleted duplicate rows even on error.
-      await fetchConnections();
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: null, details: null }));
         const msg = body.details
@@ -160,7 +158,18 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
           : body.error ?? "Falha ao iniciar o pareamento do WhatsApp";
         toast.error(msg);
       }
+    } catch (err) {
+      // fetch() itself never completed (network timeout, DNS, connection
+      // reset) — no res.ok branch runs for this. Release the auto-refresh
+      // latch so the next tick retries instead of leaving the QR panel
+      // stuck on "expirado" forever with no visible error.
+      console.error("[channels] handleConnect network failure:", err);
+      autoRefreshedRef.current.delete(connectionId);
+      toast.error("Falha de rede ao gerar o QR Code. Tentando novamente...");
     } finally {
+      // Always refresh — the server may have deleted duplicate rows even on
+      // error, and a network failure above still needs the latest DB state.
+      await fetchConnections();
       setConnectingId(null);
     }
   }
@@ -413,14 +422,12 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
                         <Loader2 className="size-8 animate-spin" />
                         <p className="text-xs">Gerando novo QR Code...</p>
                       </div>
-                    ) : isQrExpired ? (
-                      /* QR expired, waiting for auto-refresh */
-                      <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
-                        <RefreshCcw className="size-6 animate-spin" />
-                        <p className="text-xs">QR expirado — gerando novo...</p>
-                      </div>
                     ) : qrcodeBase64 ? (
-                      /* QR ready to scan */
+                      /* QR ready to scan — a valid image always wins over the
+                         expiry countdown, which only affects the label below;
+                         hiding a real QR just because updated_at looks stale
+                         (e.g. after a transient auto-refresh network failure)
+                         is exactly the bug this ordering fixes. */
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -457,6 +464,13 @@ export function ChannelConnectionsPanel({ filterTypes }: ChannelConnectionsPanel
                           WhatsApp &gt; Dispositivos conectados &gt; Conectar um dispositivo
                         </p>
                       </>
+                    ) : isQrExpired ? (
+                      /* No QR image at all (never arrived, or auto-refresh
+                         failed) and the countdown ran out. */
+                      <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <RefreshCcw className="size-6 animate-spin" />
+                        <p className="text-xs">QR expirado — gerando novo...</p>
+                      </div>
                     ) : (
                       /* provisioned but QR not yet delivered by webhook */
                       <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
