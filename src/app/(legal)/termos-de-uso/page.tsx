@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMPANY } from "@/lib/company";
 
 export const metadata: Metadata = {
   title: "Termos de Uso",
@@ -94,6 +95,26 @@ export default function TermosDeUsoPage() {
               regulam a relação entre o WAVON e qualquer pessoa física ou jurídica que acesse, teste ou
               contrate o serviço (&ldquo;<strong className="text-foreground">Usuário</strong>&rdquo;).
             </p>
+            <div className="mt-5 rounded-lg border border-border p-5">
+              <p className="mb-3 font-medium text-foreground">Prestador do serviço</p>
+              <ul className="space-y-1 text-xs leading-6">
+                <li><span className="text-foreground">Razão social:</span> {COMPANY.legalName}</li>
+                <li><span className="text-foreground">Nome fantasia:</span> {COMPANY.tradeName}</li>
+                <li><span className="text-foreground">CNPJ:</span> {COMPANY.cnpj}</li>
+                <li><span className="text-foreground">Endereço:</span> {COMPANY.address.full}</li>
+                <li>
+                  <span className="text-foreground">E-mail:</span>{" "}
+                  <a
+                    href={`mailto:${COMPANY.contact.supportEmail}`}
+                    className="underline underline-offset-4 hover:opacity-80"
+                  >
+                    {COMPANY.contact.supportEmail}
+                  </a>
+                </li>
+                <li><span className="text-foreground">Telefone:</span> {COMPANY.contact.phone}</li>
+                <li><span className="text-foreground">Atendimento:</span> {COMPANY.businessHours}</li>
+              </ul>
+            </div>
           </section>
 
           <section id="elegibilidade">
@@ -115,8 +136,8 @@ export default function TermosDeUsoPage() {
               O acesso ao WAVON é realizado mediante cadastro com e-mail e senha. Você é responsável
               por manter a confidencialidade de suas credenciais e por todas as ações realizadas em sua conta.
               Em caso de suspeita de acesso não autorizado, notifique imediatamente{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>.
             </p>
             <p className="mt-3">
@@ -209,8 +230,8 @@ export default function TermosDeUsoPage() {
             <p>
               Você pode cancelar sua conta a qualquer momento nas configurações da plataforma ou via
               e-mail para{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>.
               O cancelamento tem efeito ao final do período já pago. Não há reembolso proporcional
               de períodos já faturados, salvo disposição legal em contrário.
@@ -245,8 +266,8 @@ export default function TermosDeUsoPage() {
             <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">12. Suporte</h2>
             <p>
               O suporte técnico é prestado via e-mail{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>{" "}
               em dias úteis (segunda a sexta, horário de Brasília). Respondemos em até 2 dias úteis.
               A documentação completa da plataforma está disponível em{" "}

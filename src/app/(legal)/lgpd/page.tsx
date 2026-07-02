@@ -168,8 +168,8 @@ export default function LgpdPage() {
               <p className="font-medium text-foreground">Encarregado de Dados — WAVON</p>
               <p className="mt-2 text-xs">
                 E-mail:{" "}
-                <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                  contato@wavon.com.br
+                <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                  suporte@wavon.com.br
                 </a>
               </p>
               <p className="mt-1 text-xs">Prazo de resposta: até 15 dias úteis.</p>
@@ -180,8 +180,8 @@ export default function LgpdPage() {
             <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">4. Como Exercer seus Direitos</h2>
             <p>
               Envie sua solicitação para{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>{" "}
               com as seguintes informações:
             </p>

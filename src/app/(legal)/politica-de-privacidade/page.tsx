@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMPANY } from "@/lib/company";
 
 export const metadata: Metadata = {
   title: "Política de Privacidade",
@@ -106,6 +107,27 @@ export default function PoliticaDePrivacidadePage() {
               de usuários da plataforma e como <strong className="text-foreground">Operador</strong> dos dados
               dos clientes finais gerenciados por nossos assinantes.
             </p>
+
+            <div className="mt-5 rounded-lg border border-border p-5">
+              <p className="mb-3 font-medium text-foreground">Identificação do Controlador</p>
+              <ul className="space-y-1 text-xs leading-6">
+                <li><span className="text-foreground">Razão social:</span> {COMPANY.legalName}</li>
+                <li><span className="text-foreground">Nome fantasia:</span> {COMPANY.tradeName}</li>
+                <li><span className="text-foreground">CNPJ:</span> {COMPANY.cnpj}</li>
+                <li><span className="text-foreground">Endereço:</span> {COMPANY.address.full}</li>
+                <li>
+                  <span className="text-foreground">E-mail:</span>{" "}
+                  <a
+                    href={`mailto:${COMPANY.contact.supportEmail}`}
+                    className="underline underline-offset-4 hover:opacity-80"
+                  >
+                    {COMPANY.contact.supportEmail}
+                  </a>
+                </li>
+                <li><span className="text-foreground">Telefone:</span> {COMPANY.contact.phone}</li>
+                <li><span className="text-foreground">Atendimento:</span> {COMPANY.businessHours}</li>
+              </ul>
+            </div>
           </section>
 
           <section id="dados-coletados">
@@ -123,12 +145,30 @@ export default function PoliticaDePrivacidadePage() {
               e configurações de equipe, para garantir o funcionamento correto e permitir auditoria interna.
             </p>
 
-            <h3 className="mb-2 mt-5 font-medium text-foreground">2.3 Dados de WhatsApp</h3>
+            <h3 className="mb-2 mt-5 font-medium text-foreground">2.3 Dados de WhatsApp (WhatsApp Business Platform)</h3>
             <p>
-              Quando você conecta sua conta do WhatsApp Business, coletamos: número de telefone (Phone Number ID),
-              ID da conta WABA, token de acesso (armazenado criptografado com AES-256-GCM) e o conteúdo
-              das conversas trocadas pelo canal. Mensagens de voz, imagens e documentos são armazenados
-              apenas como referência de entrega.
+              O WAVON integra-se ao WhatsApp por meio da <strong className="text-foreground">WhatsApp Business
+              Platform da Meta</strong> — incluindo a <strong className="text-foreground">Cloud API</strong> e o
+              fluxo de <strong className="text-foreground">Embedded Signup</strong> (modelo de coexistência /
+              Coexistence). A conexão é autorizada por você via login seguro na própria Meta; o WAVON atua como
+              provedor de tecnologia (Tech Provider) e nunca recebe suas credenciais de login da Meta.
+            </p>
+            <p className="mt-3">
+              Ao conectar sua conta do WhatsApp Business, coletamos e processamos: número de telefone e Phone
+              Number ID, ID da conta WhatsApp Business (WABA), nome de exibição do negócio, token de acesso
+              (armazenado criptografado com AES-256-GCM) e o conteúdo das mensagens trocadas pelo canal
+              (texto, imagens, áudios, vídeos e documentos), incluindo nome de perfil e número dos contatos
+              com quem você conversa. Esses dados são tratados exclusivamente para operar o serviço de
+              atendimento contratado por você e ficam sujeitos aos{" "}
+              <a
+                href="https://www.whatsapp.com/legal/business-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground underline underline-offset-4 hover:opacity-80"
+              >
+                Termos da Plataforma de Negócios do WhatsApp
+              </a>. O WAVON não utiliza o conteúdo dessas conversas para publicidade e não o compartilha com
+              terceiros fora das finalidades descritas nesta Política.
             </p>
 
             <h3 className="mb-2 mt-5 font-medium text-foreground">2.4 Dados do Google Calendar e Outlook</h3>
@@ -273,6 +313,15 @@ export default function PoliticaDePrivacidadePage() {
               <li><strong className="text-foreground">Logs de segurança:</strong> 6 meses;</li>
               <li><strong className="text-foreground">Logs de IA:</strong> 12 meses para controle de uso.</li>
             </ul>
+            <p className="mt-4">
+              <strong className="text-foreground">Encerramento da conta:</strong> você pode encerrar sua conta
+              a qualquer momento pelas configurações da plataforma ou solicitando pelo e-mail de suporte. Ao
+              encerrar, revogamos os acessos ativos (incluindo tokens de WhatsApp, Google e Microsoft) e
+              iniciamos a exclusão dos seus dados conforme descrito na página de{" "}
+              <Link href="/exclusao-de-dados" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                Exclusão de Dados
+              </Link>, preservados apenas os registros exigidos por lei.
+            </p>
           </section>
 
           <section id="direitos">
@@ -295,22 +344,32 @@ export default function PoliticaDePrivacidadePage() {
             </ul>
             <p className="mt-3">
               Para exercer esses direitos, entre em contato pelo e-mail{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>.
               Respondemos em até 15 dias úteis.
             </p>
           </section>
 
           <section id="contato-lgpd">
-            <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">10. Encarregado de Dados (DPO)</h2>
+            <h2 className="font-heading mb-3 text-lg font-semibold text-foreground">10. Encarregado de Dados (DPO) e Contato</h2>
             <p>
-              Nosso Encarregado de Proteção de Dados pode ser contatado pelo e-mail{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
-              </a>.
-              Para dúvidas gerais sobre privacidade ou para exercer seus direitos, utilize o mesmo canal.
+              O Encarregado de Proteção de Dados (DPO) do WAVON pode ser contatado pelo e-mail{" "}
+              <a
+                href={`mailto:${COMPANY.contact.privacyEmail}`}
+                className="text-foreground underline underline-offset-4 hover:opacity-80"
+              >
+                {COMPANY.contact.privacyEmail}
+              </a>. Utilize o mesmo canal para dúvidas sobre privacidade ou para exercer seus direitos como titular.
             </p>
+            <div className="mt-4 rounded-lg border border-border p-5 text-xs leading-6">
+              <p className="mb-2 font-medium text-foreground">Dados do Controlador</p>
+              <p>{COMPANY.legalName} ({COMPANY.tradeName})</p>
+              <p>CNPJ: {COMPANY.cnpj}</p>
+              <p>{COMPANY.address.full}</p>
+              <p>Telefone: {COMPANY.contact.phone}</p>
+              <p>Atendimento: {COMPANY.businessHours}</p>
+            </div>
           </section>
 
           <section id="atualizacoes">
@@ -322,8 +381,8 @@ export default function PoliticaDePrivacidadePage() {
             </p>
             <p className="mt-3">
               Versões anteriores desta Política estão disponíveis mediante solicitação a{" "}
-              <a href="mailto:contato@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
-                contato@wavon.com.br
+              <a href="mailto:suporte@wavon.com.br" className="text-foreground underline underline-offset-4 hover:opacity-80">
+                suporte@wavon.com.br
               </a>.
             </p>
           </section>
